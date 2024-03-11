@@ -128,6 +128,8 @@ class NoDecay(SynSys):
             self.comm = ByPass(self.num_in)
         elif conn_type is ConnType.All2All:
             self.comm = AllToAll((self.num_in, self.num_out), weights)
+        elif conn_type is ConnType.ToMaxPooling:
+            self.comm = ToMaxPooling((self.num_in,self.num_out), self.dest.kernel_size, self.dest.stride)
         else:  # MatConn
             if not isinstance(weights, np.ndarray):
                 raise TypeError(
@@ -145,18 +147,30 @@ class NoDecay(SynSys):
     def update(
         self, spike: Optional[np.ndarray] = None, *args, **kwargs
     ) -> NDArray[np.int32]:
+
         # Retrieve the spike at index `timestamp` of the dest neurons
         if self.dest._is_working():
             if isinstance(self.source, InputProj):
                 synin = self.source.output.copy() if spike is None else spike
-            else:
+                print("inp_syin:", self.source.copy())
+            elif self.dest.SNN_enable:
                 idx = self.dest.timestamp % HwConfig.N_TIMESLOT_MAX
                 synin = self.source.output[idx].copy() if spike is None else spike
+                #print("syin:",self.source.output[idx].copy())
+            elif not self.dest.SNN_enable:
+                print("ANN_syin:", self.source.output)
+                synin = self.source.output
         else:
             # Retrieve 0 to the dest neurons if it is not working
             synin = np.zeros_like(self.source.spike)
-
-        self._synout = self.comm(synin).astype(np.int32)
+        if self.dest.max_pooling:
+            print("进入poolmax and weights.shape", self.weights.shape)
+            synin = np.expand_dims(synin, axis=1)
+            #self._synout = np.multiply(synin, self.weights)
+            self._synout = self.comm(synin).astype(np.int32)
+        else:
+            self._synout = self.comm(synin).astype(np.int32)
+        print("synout:",self._synout)
         return self._synout
 
     def reset_state(self, *args, **kwargs) -> None:

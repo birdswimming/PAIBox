@@ -67,12 +67,15 @@ class InputProj(Projection, TimeRelatedNode):
 
     def update(self, **kwargs) -> SpikeType:
         _spike = self._get_neumeric_input(**kwargs)
-
+        print("projection:", _spike)
         if isinstance(_spike, (int, np.integer)):
             self._inner_spike = np.full((self.num_out,), _spike, dtype=np.bool_)
         elif isinstance(_spike, np.ndarray):
             try:
-                self._inner_spike = _spike.reshape((self.num_out,)).astype(np.bool_)
+                if(_spike.dtype != np.bool_):
+                    self._inner_spike = _spike.reshape((self.num_out,)).astype(np.int8)
+                else:
+                    self._inner_spike = _spike.reshape((self.num_out,)).astype(np.bool_)
             except ValueError:
                 raise ShapeError(
                     f"Cannot reshape input value from {_spike.shape} to ({self.num_out},)."
@@ -83,7 +86,7 @@ class InputProj(Projection, TimeRelatedNode):
                 f"Excepted type int, np.integer or np.ndarray, "
                 f"but got {_spike}, type {type(_spike)}."
             )
-
+        print(self._inner_spike)
         return self._inner_spike
 
     def reset_state(self) -> None:

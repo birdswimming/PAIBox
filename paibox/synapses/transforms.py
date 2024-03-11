@@ -9,7 +9,7 @@ from paibox.exceptions import ShapeError
 from paibox.types import DataArrayType, WeightType
 from paibox.utils import is_shape
 
-__all__ = ["ConnType", "OneToOne", "ByPass", "AllToAll", "MaskedLinear"]
+__all__ = ["ConnType", "OneToOne", "ByPass", "AllToAll", "MaskedLinear", "ToMaxPooling"]
 
 
 MAX_INT1 = np.int8(1)
@@ -34,6 +34,8 @@ class ConnType(Enum):
 
     All2All = auto()
     """All-to-all connection."""
+
+    ToMaxPooling = auto()
 
 
 def _get_weight_precision(weight: np.ndarray, enable_wp_opt: bool) -> WP:
@@ -221,3 +223,34 @@ class MaskedLinear(Transform):
     @property
     def connectivity(self):
         return self.weights.astype(self.conn_dtype)
+
+
+
+class ToMaxPooling(Transform):
+    def __init__(self, conn_size: Tuple[int, int], kernel_size: int, stride: int, ) -> None:
+
+        self.conn_size = conn_size
+
+        #self.weights = np.asarray(weights, dtype=np.int8)
+        self.weights = np.zeros(self.conn_size, dtype=np.int8)
+        for i in range(conn_size[1]):
+            print(i)
+            self.weights[i*stride : i* i* stride + kernel_size,i] = 1
+        #print("pooling weigth: ", self.weights)
+        if not self.weights.ndim in (0, 2):
+            raise ShapeError(f"The ndim of weights must be 0 or 2.")
+
+    def __call__(self, x: np.ndarray, *args, **kwargs) -> NDArray[np.int32]:
+        """
+        - When weights is a scalar, the output is a scalar. (Risky, DO NOT USE)
+        - When weights is a matrix, the output is the dot product of `x` & `weights`.
+        """
+        if self.weights.ndim == 0:
+            raise ShapeError(f"Excepted is not a scalar")
+        output = np.multiply(x, self.weights)
+        return output.astype(np.int32)
+
+    @property
+    def connectivity(self):
+        # TODO
+        return

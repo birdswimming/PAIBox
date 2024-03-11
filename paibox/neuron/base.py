@@ -13,6 +13,7 @@ from paicorelib import (
     TM,
     MaxPoolingEnable,
     SpikeWidthFormat,
+    SNNModeEnable,
 )
 
 if sys.version_info >= (3, 10):
@@ -52,6 +53,9 @@ class MetaNeuron:
         leak_v: int,
         synaptic_integration_mode: SIM,
         bit_truncation: int,
+        spike_width_format: SpikeWidthFormat,
+        pool_max_en: MaxPoolingEnable,
+        SNN_enable: SNNModeEnable,
         keep_shape: bool = False,
     ) -> None:
         """Stateless attributes. Scalar."""
@@ -77,8 +81,9 @@ class MetaNeuron:
         self._vjt_init = 0  # Signed 30-bit. Fixed.
 
         # TODO These two config below are parameters of CORE.
-        self._spike_width_format: SpikeWidthFormat
-        self._pool_max_en: MaxPoolingEnable
+        self._spike_width_format: SpikeWidthFormat = spike_width_format
+        self._pool_max_en: MaxPoolingEnable = pool_max_en
+        self._SNN_enable: SNNModeEnable = SNN_enable
 
         # Auxiliary attributes or variables.
         self._thres_mask: int = (1 << threshold_mask_bits) - 1
@@ -292,7 +297,7 @@ class MetaNeuron:
             if self._spike_width_format is SpikeWidthFormat.WIDTH_1BIT:
                 return np.ones(self.varshape, dtype=np.int32)
 
-            if self.bit_truncation >= 8:
+            if self.bit_truncation > 8:
                 return np.full(
                     self.varshape,
                     ((vj >> self.bit_truncation) - 8) & ((1 << 8) - 1),
@@ -319,7 +324,7 @@ class MetaNeuron:
 
     def _max_pooling(self, x: np.ndarray) -> None:
         # TODO
-        pass
+        return np.max(x, axis=0)
 
     def _aux_pre_hook(self) -> None:
         """Pre-hook before the entire activation."""
@@ -336,7 +341,7 @@ class MetaNeuron:
         """Update at one time step."""
         # 1. Charge
         v_charged = self._neuronal_charge(x, vjt_pre)
-
+        #print(v_charged)
         # 2. Leak & fire
         if self.leaking_comparison is LCM.LEAK_BEFORE_COMP:
             v_leaked = self._neuronal_leak(v_charged)
@@ -344,13 +349,16 @@ class MetaNeuron:
         else:
             spike = self._neuronal_fire(v_charged)
             v_leaked = self._neuronal_leak(v_charged)
-
+        #print(v_leaked)
         # Store the intermediate threshold mode & return
         _debug_thres_mode = self.thres_mode
 
         # 3. Reset
         v_reset = self._neuronal_reset(v_leaked)
-
+        #print(v_reset)
+        if self._SNN_enable is SNNModeEnable.DISABLE:
+            v_reset = self._relu(v_reset)
+        #print(v_reset)
         return spike, v_reset, _debug_thres_mode
 
     def init_param(self, param: Any) -> np.ndarray:
@@ -364,6 +372,14 @@ class MetaNeuron:
     def bias(self) -> int:
         """Signed 30-bit. ANN mode only."""
         return self.leak_v
+
+    @property
+    def max_pooling(self) -> bool:
+        return self._pool_max_en is MaxPoolingEnable.ENABLE
+
+    @property
+    def SNN_enable(self) -> bool:
+        return self._SNN_enable is SNNModeEnable.ENABLE
 
 
 class Neuron(MetaNeuron, NeuDyn):
@@ -396,6 +412,9 @@ class Neuron(MetaNeuron, NeuDyn):
         leak_v: int,
         synaptic_integration_mode: SIM,
         bit_truncation: int,
+        spike_width_format: SpikeWidthFormat,
+        pool_max_en: MaxPoolingEnable,
+        SNN_enable: SNNModeEnable,
         *,
         delay: int = 1,
         tick_wait_start: int = 1,
@@ -451,6 +470,9 @@ class Neuron(MetaNeuron, NeuDyn):
             leak_v,
             synaptic_integration_mode,
             bit_truncation,
+            spike_width_format,
+            pool_max_en,
+            SNN_enable,
             keep_shape,
         )
         super(MetaNeuron, self).__init__(name)
@@ -493,21 +515,27 @@ class Neuron(MetaNeuron, NeuDyn):
     def update(
         self, x: Optional[np.ndarray] = None, *args, **kwargs
     ) -> Optional[SpikeType]:
+        print("进入neuron的update")
         # Priority order is a must.
         # The neuron doesn't work if `tws = 0` & done working
         # until `t - tws + 1 > twe` under the condition `twe > 0`.
-        if not self._is_working():
-            self._inner_spike = self.init_param(0).astype(np.bool_)
-            return None
+        # if not self._is_working():
+        #     print("not working")
+        #     self._inner_spike = self.init_param(0).astype(np.bool_)
+        #     return None
 
         # The neuron is going to work.
         if x is None:
             x = self.sum_inputs()
-
+        if self._pool_max_en is MaxPoolingEnable.ENABLE:
+            print("进入poolmax的x:", x)
+            self._vjt = super()._max_pooling(x)
+            print(self._vjt)
+            return self._vjt
         self._inner_spike, self._vjt, self._debug_thres_mode = super()._meta_update(
             x, self._vjt
         )
-
+        #print(self._vjt)
         # If the membrane potential (30-bit signed) overflows, the chip will automatically handle it.
         # This behavior needs to be implemented during simulation.
         self._vjt = np.where(
@@ -522,8 +550,10 @@ class Neuron(MetaNeuron, NeuDyn):
 
         idx = (self.timestamp + self.delay_relative - 1) % HwConfig.N_TIMESLOT_MAX
         self.delay_registers[idx] = self._inner_spike.copy()
-
-        return self._inner_spike
+        if self._SNN_enable is SNNModeEnable.DISABLE:
+            return self._vjt
+        else:
+            return self._inner_spike
 
     def reset_state(self, *args, **kwargs) -> None:
         """Initialization, not the neuronal reset."""
@@ -552,7 +582,10 @@ class Neuron(MetaNeuron, NeuDyn):
 
     @property
     def output(self) -> SpikeType:
-        return self.delay_registers
+        if self.SNN_enable is SNNModeEnable.ENABLE:
+            return self.delay_registers
+        else:
+            return self.voltage
 
     @property
     def spike(self) -> SpikeType:
@@ -565,3 +598,5 @@ class Neuron(MetaNeuron, NeuDyn):
     @property
     def voltage(self) -> VoltageType:
         return self._vjt.reshape(self.varshape)
+
+

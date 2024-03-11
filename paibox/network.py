@@ -33,6 +33,11 @@ class DynSysGroup(DynamicSys, Container):
         for node in nodes.subset(NeuDyn).values():
             node()
 
+        for node in (
+                nodes.not_subset(Projection).not_subset(SynSys).not_subset(NeuDyn).values()
+        ):
+            node()
+
     def reset_state(self) -> None:
         nodes = self.nodes(level=1, include_self=False).subset(DynamicSys).unique()
 

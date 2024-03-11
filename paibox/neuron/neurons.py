@@ -1,6 +1,6 @@
 from typing import Optional
 
-from paicorelib import LCM, LDM, LIM, NTM, RM, SIM
+from paicorelib import LCM, LDM, LIM, NTM, RM, SIM, MaxPoolingEnable, SpikeWidthFormat, SNNModeEnable
 
 from paibox.types import Shape
 
@@ -55,6 +55,9 @@ class IF(Neuron):
             0,
             _sim,
             0,
+            SpikeWidthFormat.WIDTH_1BIT,
+            MaxPoolingEnable.DISABLE,
+            SNNModeEnable.ENABLE,
             delay=delay,
             tick_wait_start=tick_wait_start,
             tick_wait_end=tick_wait_end,
@@ -117,6 +120,9 @@ class LIF(Neuron):
             _leak_v,
             _sim,
             0,
+            SpikeWidthFormat.WIDTH_1BIT,
+            MaxPoolingEnable.DISABLE,
+            SNNModeEnable.ENABLE,
             delay=delay,
             tick_wait_start=tick_wait_start,
             tick_wait_end=tick_wait_end,
@@ -164,6 +170,9 @@ class TonicSpiking(Neuron):
             0,
             SIM.MODE_DETERMINISTIC,
             0,
+            SpikeWidthFormat.WIDTH_1BIT,
+            MaxPoolingEnable.DISABLE,
+            SNNModeEnable.ENABLE,
             delay=delay,
             tick_wait_start=tick_wait_start,
             tick_wait_end=tick_wait_end,
@@ -220,6 +229,9 @@ class PhasicSpiking(Neuron):
             leak_v,
             SIM.MODE_DETERMINISTIC,
             0,
+            SpikeWidthFormat.WIDTH_1BIT,
+            MaxPoolingEnable.DISABLE,
+            SNNModeEnable.ENABLE,
             delay=delay,
             tick_wait_start=tick_wait_start,
             tick_wait_end=tick_wait_end,
