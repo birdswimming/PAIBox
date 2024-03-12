@@ -1,16 +1,8 @@
-import sys
-from collections import defaultdict
+import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Literal, NamedTuple, TypedDict
-
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias
-else:
-    from typing_extensions import TypeAlias
-
-import json
 
 import numpy as np
 from numpy.typing import NDArray
@@ -31,10 +23,10 @@ from paicorelib import (
     WeightPrecision,
     get_replication_id,
 )
-
-from paicorelib.framelib.types import FRAME_DTYPE, FrameArrayType
 from paicorelib.framelib.frame_gen import OfflineFrameGen
+from paicorelib.framelib.types import FRAME_DTYPE, FrameArrayType
 from paicorelib.framelib.utils import np2bin, np2npy, np2txt
+from typing_extensions import NotRequired, TypeAlias
 
 from paibox.base import NeuDyn
 
@@ -162,8 +154,8 @@ class NeuronConfig(ConfigTemplate):
             - addr_offset: offset of the RAM address.
             - axon_segs: the destination axon segments.
             - dest_core_coords: coordinates of the core of the destination axons.
-            - dest_chip_coord: coordinate of the chip of the destination axons. \
-                The default is `output_chip_addr` in the backend context.
+            - dest_chip_coord: coordinate of the chip of the destination axons. Default is \
+                `output_chip_addr` in the backend context.
         """
         attrs = NeuronAttrs.model_validate(neuron.export_params(), strict=True)
         dest_rid = get_replication_id(dest_core_coords)
@@ -267,7 +259,10 @@ class GraphInfo(TypedDict):
     members: CorePlacementInfo
     inherent_timestep: int
     n_core_required: int
-    extras: Dict[str, Any]
+    """The actual used cores."""
+    # n_core_occupied: int
+    # """The occupied cores, including used & wasted."""
+    extras: NotRequired[Dict[str, Any]]
 
 
 def gen_config_frames_by_coreconf(
@@ -276,7 +271,7 @@ def gen_config_frames_by_coreconf(
     write_to_file: bool,
     fp: Path,
     split_by_coord: bool,
-    format: Literal["txt", "bin", "npy"] = "bin",
+    format: Literal["txt", "bin", "npy"],
 ) -> Dict[Coord, FrameArrayType]:
     """Generate configuration frames by given the `CorePlacementConfig`.
 
@@ -286,7 +281,7 @@ def gen_config_frames_by_coreconf(
         - write_to_file: whether to write frames to file.
         - fp: If `write_to_file` is `True`, specify the path.
         - split_by_coord: whether to split the generated frames file by the core coordinates.
-        - format: it can be `txt`, `bin`, or `npy`. `bin` & `npy` are recommended.
+        - format: `txt`, `bin`, or `npy`. `bin` & `npy` are recommended.
     """
 
     def _write_to_f(name: str, array: np.ndarray) -> None:
@@ -301,7 +296,7 @@ def gen_config_frames_by_coreconf(
             np2txt(_fp, array)
 
     _default_rid = RId(0, 0)
-    _debug_dict: Dict[Coord, Dict[str, Any]] = defaultdict()
+    _debug_dict: Dict[Coord, Dict[str, Any]] = dict()
     frame_arrays_on_core: Dict[Coord, FrameArrayType] = dict()
 
     for core_coord, v in config_dict.items():

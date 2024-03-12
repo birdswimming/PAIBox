@@ -8,7 +8,6 @@ from .ANN_neurons import MaxPooling
 __all__ = [
     "IF",
     "LIF",
-    "Neuron",
     "TonicSpiking",
     "PhasicSpiking",
     "ReLu",

@@ -217,7 +217,7 @@ class CoreBlock(CoreAbstract):
 
     @lcn_ex.setter
     def lcn_ex(self, lcn_ex: LCN_EX) -> None:
-        """Set or adjust the lcn_ex & lock."""
+        """Set or adjust the `lcn_ex` & lock."""
         if lcn_ex > LCN_EX.LCN_64X:
             raise ResourceError(
                 f"LCN extension required out of {LCN_EX.LCN_64X}: {lcn_ex}"
@@ -280,13 +280,13 @@ class CoreBlock(CoreAbstract):
             raise BuildError(f"Do this after coordinates assignment.")
 
         # Get #N of neurons on each `CorePlacement` according to the
-        # maximum address required of neuron segments on each core placement.
-        for neuron_segs in self.neuron_segs_of_cb:
-            if neuron_segs == []:
-                raise ValueError
+        # maximum address required of neuron segments on each `CorePlacement`.
+        assert [] not in self.neuron_segs_of_cb  # TODO if it never happens, remove it.
 
-        n = [neuron_segs[-1].n_neuron for neuron_segs in self.neuron_segs_of_cb]
-        return n
+        return [
+            sum(seg.n_neuron for seg in neuron_segs)
+            for neuron_segs in self.neuron_segs_of_cb
+        ]
 
     @cached_property
     def raw_weight_of_dest(self) -> List[WeightType]:
@@ -568,8 +568,9 @@ class CorePlacement(CoreAbstract):
         return cb_config
 
     @overload
-    def export_neu_config(self, neu_seg: NeuSeg, axon_dests: List[CoreBlock]) -> None:
-        ...
+    def export_neu_config(
+        self, neu_seg: NeuSeg, axon_dests: List[CoreBlock]
+    ) -> None: ...
 
     @overload
     def export_neu_config(
@@ -578,8 +579,7 @@ class CorePlacement(CoreAbstract):
         *,
         output_core_coord: Coord,
         axon_addr_offset: int,
-    ) -> int:
-        ...
+    ) -> int: ...
 
     def export_neu_config(
         self,

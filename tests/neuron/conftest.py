@@ -2,7 +2,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from paicorelib import *
 
 import paibox as pb
 
@@ -47,7 +46,7 @@ class Net1(pb.Network):
         self.inp1 = pb.InputProj(fakeout, shape_out=(2,))
         self.n1 = pb.neuron.IF((2,), 3)
         self.s1 = pb.synapses.NoDecay(
-            self.inp1, self.n1, conn_type=pb.synapses.ConnType.One2One
+            self.inp1, self.n1, conn_type=pb.SynConnType.One2One
         )
 
         self.probe1 = pb.simulator.Probe(self.inp1, "output")
@@ -65,15 +64,15 @@ class Net2(pb.Network):
     def __init__(self):
         super().__init__()
         self.inp1 = pb.InputProj(1, shape_out=(2, 2))
-        self.n1 = pb.neuron.LIF((2, 2), 600, reset_v=1, leaky_v=-1)
+        self.n1 = pb.neuron.LIF((2, 2), 600, reset_v=1, leak_v=-1)
         self.s1 = pb.synapses.NoDecay(
-            self.inp1, self.n1, weights=127, conn_type=pb.synapses.ConnType.All2All
+            self.inp1, self.n1, weights=127, conn_type=pb.SynConnType.All2All
         )
         self.s2 = pb.synapses.NoDecay(
-            self.inp1, self.n1, weights=127, conn_type=pb.synapses.ConnType.All2All
+            self.inp1, self.n1, weights=127, conn_type=pb.SynConnType.All2All
         )
         self.s3 = pb.synapses.NoDecay(
-            self.inp1, self.n1, weights=127, conn_type=pb.synapses.ConnType.All2All
+            self.inp1, self.n1, weights=127, conn_type=pb.SynConnType.All2All
         )
 
         self.probe1 = pb.simulator.Probe(self.inp1, "output")
@@ -88,13 +87,13 @@ class Net3(pb.Network):
     def __init__(self):
         super().__init__()
         self.inp1 = pb.InputProj(1, shape_out=(2, 2))
-        self.n1 = pb.neuron.LIF((2, 2), 100, reset_v=1, leaky_v=-1)
-        self.n2 = pb.neuron.LIF((2, 2), 100, reset_v=1, leaky_v=-1)
+        self.n1 = pb.neuron.LIF((2, 2), 100, reset_v=1, leak_v=-1)
+        self.n2 = pb.neuron.LIF((2, 2), 100, reset_v=1, leak_v=-1)
         self.s1 = pb.synapses.NoDecay(
-            self.inp1, self.n1, weights=10, conn_type=pb.synapses.ConnType.All2All
+            self.inp1, self.n1, weights=10, conn_type=pb.SynConnType.All2All
         )
         self.s2 = pb.synapses.NoDecay(
-            self.n1, self.n2, weights=10, conn_type=pb.synapses.ConnType.All2All
+            self.n1, self.n2, weights=10, conn_type=pb.SynConnType.All2All
         )
 
         self.probe1 = pb.simulator.Probe(self.n1, "voltage", name="n1_v")
@@ -109,7 +108,7 @@ class TonicSpikingNet(pb.Network):
         self.inp1 = pb.InputProj(fakeout, shape_out=(2,))
         self.n1 = pb.neuron.TonicSpiking((2,), 3)
         self.s1 = pb.synapses.NoDecay(
-            self.inp1, self.n1, conn_type=pb.synapses.ConnType.One2One
+            self.inp1, self.n1, conn_type=pb.SynConnType.One2One
         )
 
         self.probe1 = pb.simulator.Probe(self.s1, "output")

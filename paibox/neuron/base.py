@@ -1,4 +1,3 @@
-import sys
 from typing import Any, Optional, Tuple
 
 import numpy as np
@@ -11,17 +10,12 @@ from paicorelib import (
     RM,
     SIM,
     TM,
+    HwConfig,
     MaxPoolingEnable,
     SpikeWidthFormat,
     SNNModeEnable,
 )
-
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias
-else:
-    from typing_extensions import TypeAlias
-
-from paicorelib import HwConfig
+from typing_extensions import TypeAlias
 
 from paibox.base import NeuDyn
 from paibox.types import Shape, SpikeType
@@ -43,13 +37,13 @@ class MetaNeuron:
         shape: Shape,
         reset_mode: RM,
         reset_v: int,
-        leaking_comparison: LCM,
+        leak_comparison: LCM,
         threshold_mask_bits: int,
         neg_thres_mode: NTM,
         neg_threshold: int,
         pos_threshold: int,
-        leaking_direction: LDM,
-        leaking_integration_mode: LIM,
+        leak_direction: LDM,
+        leak_integration_mode: LIM,
         leak_v: int,
         synaptic_integration_mode: SIM,
         bit_truncation: int,
@@ -68,13 +62,13 @@ class MetaNeuron:
         # They will be exported to the parameter verification model.
         self.reset_mode: RM = reset_mode
         self.reset_v: int = reset_v  # Signed 30-bit
-        self.leaking_comparison: LCM = leaking_comparison
+        self.leak_comparison: LCM = leak_comparison
         self.threshold_mask_bits: int = threshold_mask_bits
         self.neg_thres_mode: NTM = neg_thres_mode
         self.neg_threshold: int = neg_threshold  # Unsigned 29-bit
         self.pos_threshold: int = pos_threshold  # Unsigned 29-bit
-        self.leaking_direction: LDM = leaking_direction
-        self.leaking_integration_mode: LIM = leaking_integration_mode
+        self.leak_direction: LDM = leak_direction
+        self.leak_integration_mode: LIM = leak_integration_mode
         self.leak_v: int = leak_v  # Signed 30-bit
         self.synaptic_integration_mode: SIM = synaptic_integration_mode
         self.bit_truncation: int = bit_truncation  # Unsigned 5-bit
@@ -91,18 +85,15 @@ class MetaNeuron:
         self._v_th_rand = self.init_param(0).astype(np.int32)
 
     def _neuronal_charge(
-        self, x: NDArray[np.int32], vjt_pre: NDArray[np.int32]
-    ) -> NDArray[np.int32]:
+        self, incoming_v: VoltageType, vjt_pre: VoltageType
+    ) -> VoltageType:
         r"""1. Synaptic integration.
-
-        Argument:
-            - x: input to the neuron(s). [1*N]
 
         Description:
             _rho_w_ij: Random synaptic integration enable, 0 or 1.
 
             If synaptic integration mode is deterministic, then
-                `vjt` = `vjt_pre` + \sum^{N-1}_{i=0} * x_i(t) * w_{i,j}
+                `vjt` = `vjt_pre` + \sum^{N-1}_{i=0} * x_i(t) * w_{i,j} (incoming_v)
             else (stochastic)
                 `vjt` = `vjt_pre` + `_rho_w_ij` * \sum^{N-1}_{i=0} * x_i(t) * w_{i,j}
         """
@@ -114,23 +105,23 @@ class MetaNeuron:
                 f"Mode {SIM.MODE_STOCHASTIC.name} not implemented."
             )
         else:
-            if x.ndim == 2:
-                xt = x.sum(axis=1).astype(np.int32)
+            if incoming_v.ndim == 2:
+                _v = incoming_v.sum(axis=1).astype(np.int32)
             else:
-                xt = x
+                _v = incoming_v
 
-        v_charged = np.add(vjt_pre, xt).astype(np.int32)
+        v_charged = np.add(vjt_pre, _v).astype(np.int32)
 
         return v_charged
 
     def _neuronal_leak(self, vjt: VoltageType) -> VoltageType:
-        r"""2. Leaking integration.
+        r"""2. Leak integration.
 
-        2.1 Leaking direction, forward or reversal.
-            If leaking direction is `MODE_FORWARD`, the `_ld` is 1, else is \sgn{`vjt`}.
+        2.1 Leak direction, forward or reversal.
+            If leak direction is `MODE_FORWARD`, the `_ld` is 1, else is \sgn{`vjt`}.
 
-        2.2 Random leaking.
-            If leaking integration is `MODE_DETERMINISTIC`, then
+        2.2 Random leak.
+            If leak integration is `MODE_DETERMINISTIC`, then
                 `vjt` = `vjt` + `_ld` * `leak_v`
             else (`MODE_STOCHASTIC`)
                 if abs(`leak_v`) >= `_rho_j_lambda`, then
@@ -140,14 +131,14 @@ class MetaNeuron:
 
                 `vjt` = `vjt` + \sgn{`leak_v`}* `_ld` * `_F`
         """
-        _rho_j_lambda = 2  # Random leaking, unsigned 29-bit.
+        _rho_j_lambda = 2  # Random leak, unsigned 29-bit.
 
-        if self.leaking_direction is LDM.MODE_FORWARD:
+        if self.leak_direction is LDM.MODE_FORWARD:
             _ld = np.ones(self.varshape, dtype=np.bool_)
         else:
             _ld = np.sign(vjt)
 
-        if self.leaking_integration_mode is LIM.MODE_DETERMINISTIC:
+        if self.leak_integration_mode is LIM.MODE_DETERMINISTIC:
             v_leaked = np.add(vjt, _ld * self.leak_v).astype(np.int32)
         else:
             raise NotImplementedError(
@@ -335,15 +326,15 @@ class MetaNeuron:
         # Reset the auxiliary threshold mode.
         self.thres_mode = self.init_param(TM.NOT_EXCEEDED).astype(np.uint8)
 
-    def _meta_update(
-        self, x: NDArray[np.int32], vjt_pre: VoltageType
+    def update(
+        self, incoming_v: VoltageType, vjt_pre: VoltageType
     ) -> Tuple[SpikeType, VoltageType, NDArray[np.uint8]]:
         """Update at one time step."""
         # 1. Charge
-        v_charged = self._neuronal_charge(x, vjt_pre)
-        #print(v_charged)
+        v_charged = self._neuronal_charge(incoming_v, vjt_pre)
+
         # 2. Leak & fire
-        if self.leaking_comparison is LCM.LEAK_BEFORE_COMP:
+        if self.leak_comparison is LCM.LEAK_BEFORE_COMP:
             v_leaked = self._neuronal_leak(v_charged)
             spike = self._neuronal_fire(v_leaked)
         else:
@@ -400,18 +391,18 @@ class Neuron(MetaNeuron, NeuDyn):
     def __init__(
         self,
         shape: Shape,
-        reset_mode: RM,
-        reset_v: int,
-        leaking_comparison: LCM,
-        threshold_mask_bits: int,
-        neg_thres_mode: NTM,
-        neg_threshold: int,
-        pos_threshold: int,
-        leaking_direction: LDM,
-        leaking_integration_mode: LIM,
-        leak_v: int,
-        synaptic_integration_mode: SIM,
-        bit_truncation: int,
+        reset_mode: RM = RM.MODE_NORMAL,
+        reset_v: int = 0,
+        leak_comparison: LCM = LCM.LEAK_AFTER_COMP,
+        threshold_mask_bits: int = 0,
+        neg_thres_mode: NTM = NTM.MODE_RESET,
+        neg_threshold: int = -1,
+        pos_threshold: int = 1,
+        leak_direction: LDM = LDM.MODE_FORWARD,
+        leak_integration_mode: LIM = LIM.MODE_DETERMINISTIC,
+        leak_v: int = 0,
+        synaptic_integration_mode: SIM = SIM.MODE_DETERMINISTIC,
+        bit_truncation: int = 0,
         spike_width_format: SpikeWidthFormat,
         pool_max_en: MaxPoolingEnable,
         SNN_enable: SNNModeEnable,
@@ -460,13 +451,13 @@ class Neuron(MetaNeuron, NeuDyn):
             shape,
             reset_mode,
             reset_v,
-            leaking_comparison,
+            leak_comparison,
             threshold_mask_bits,
             neg_thres_mode,
             (-neg_threshold),  # In `MetaNeuron`, it is unsgined.
             pos_threshold,
-            leaking_direction,
-            leaking_integration_mode,
+            leak_direction,
+            leak_integration_mode,
             leak_v,
             synaptic_integration_mode,
             bit_truncation,
@@ -504,6 +495,9 @@ class Neuron(MetaNeuron, NeuDyn):
         self._twe = tick_wait_end
         self._unrolling_factor = unrolling_factor
 
+        """Counter of copies."""
+        self._n_copied = 0
+
     def __len__(self) -> int:
         return self._n_neuron
 
@@ -519,10 +513,9 @@ class Neuron(MetaNeuron, NeuDyn):
         # Priority order is a must.
         # The neuron doesn't work if `tws = 0` & done working
         # until `t - tws + 1 > twe` under the condition `twe > 0`.
-        # if not self._is_working():
-        #     print("not working")
-        #     self._inner_spike = self.init_param(0).astype(np.bool_)
-        #     return None
+        if not self.is_working:
+            self._inner_spike = self.init_param(0).astype(np.bool_)
+            return None
 
         # The neuron is going to work.
         if x is None:
@@ -535,18 +528,21 @@ class Neuron(MetaNeuron, NeuDyn):
         self._inner_spike, self._vjt, self._debug_thres_mode = super()._meta_update(
             x, self._vjt
         )
-        #print(self._vjt)
-        # If the membrane potential (30-bit signed) overflows, the chip will automatically handle it.
+        # If the incoming membrane potential (30-bit signed) overflows, the chip will automatically handle it.
         # This behavior needs to be implemented during simulation.
-        self._vjt = np.where(
-            self._vjt > VJT_MAX_LIMIT,
-            self._vjt - VJT_LIMIT,
+        incoming_v = np.where(
+            x > VJT_MAX_LIMIT,
+            x - VJT_LIMIT,
             np.where(
-                self._vjt < VJT_MIN_LIMIT,
-                self._vjt + VJT_LIMIT,
-                self._vjt,
+                x < VJT_MIN_LIMIT,
+                x + VJT_LIMIT,
+                x,
             ),
         ).astype(np.int32)
+
+        self._inner_spike, self._vjt, self._debug_thres_mode = super().update(
+            incoming_v, self._vjt
+        )
 
         idx = (self.timestamp + self.delay_relative - 1) % HwConfig.N_TIMESLOT_MAX
         self.delay_registers[idx] = self._inner_spike.copy()
@@ -556,13 +552,44 @@ class Neuron(MetaNeuron, NeuDyn):
             return self._inner_spike
 
     def reset_state(self, *args, **kwargs) -> None:
-        """Initialization, not the neuronal reset."""
-        self.reset()  # Call reset of `StatusMemory`.
+        self.reset_memory()  # Call reset of `StatusMemory`.
 
-    def _is_working(self) -> bool:
-        return (self.tick_wait_start > 0 and self.timestamp >= 0) and (
-            self.tick_wait_end == 0 or self.timestamp + 1 <= self.tick_wait_end
+    def __copy__(self) -> "Neuron":
+        """Same as `__deepcopy__`."""
+        return self.__deepcopy__()
+
+    def __deepcopy__(self) -> "Neuron":
+        """Deepcopy a neuron.
+
+        NOTE: It simply reinitializes a neuron with the parameters of the original neuron.
+            Two neurons are not related.
+        """
+        self._n_copied += 1
+
+        return Neuron(
+            self._shape,
+            self.reset_mode,
+            self.reset_v,
+            self.leak_comparison,
+            self.threshold_mask_bits,
+            self.neg_thres_mode,
+            self.neg_threshold,
+            self.pos_threshold,
+            self.leak_direction,
+            self.leak_integration_mode,
+            self.leak_v,
+            self.synaptic_integration_mode,
+            self.bit_truncation,
+            delay=self.delay_relative,
+            tick_wait_start=self.tick_wait_start,
+            tick_wait_end=self.tick_wait_end,
+            unrolling_factor=self.unrolling_factor,
+            keep_shape=self.keep_shape,
+            name=f"{self.name}_copied_{self._n_copied}",
         )
+
+    def copy(self) -> "Neuron":
+        return self.__deepcopy__()
 
     @property
     def shape_in(self) -> Tuple[int, ...]:

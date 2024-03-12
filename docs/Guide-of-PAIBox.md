@@ -6,13 +6,6 @@
 
 ## 快速上手
 
-目前PAIBox处于快速迭代的开发阶段，通过 `git clone` 指定 `dev` 分支以体验PAIBox。
-
-```bash
-git clone -b dev https://github.com/PAICookers/PAIBox.git
-cd PAIBox
-```
-
 PAIBox使用 `pyproject.toml` 管理依赖。若使用Poetry：
 
 ```bash
@@ -25,7 +18,29 @@ poetry install
 python = "^3.8"
 pydantic = "^2.0"
 numpy = "^1.23.0"
-paicorelib = "^0.0.11"
+paicorelib = "0.0.13"
+```
+
+通过pip安装PAIBox：
+
+```bash
+pip install paibox
+```
+
+或克隆 `dev` 分支以体验开发版。
+
+```bash
+git clone -b dev https://github.com/PAICookers/PAIBox.git
+cd PAIBox
+```
+
+可查看版本号以确认安装：
+
+```python
+import paibox as pb
+
+print(pb.__version__)
+>>> x.y.z
 ```
 
 ## 基本组件
@@ -57,8 +72,9 @@ n1 = pb.neuron.IF(shape=10, threshold=127, reset_v=0, keep_shape=False, delay=1,
 - `reset_v`：神经元的重置膜电位。
 - `keep_shape`：是否在仿真记录数据时保持尺寸信息，默认为 `False`。实际进行运算的尺寸仍视为一维。
 - `delay`：设定该神经元组输出的延迟。默认为1，即本时间步的计算结果，**下一时间步**传递至后继神经元。
-- `tick_wait_start`: 设定该神经元组在第 `N` 个时间步时启动，0表示不启动。默认为1。
-- `tick_wait_end`: 设定该神经元组持续工作 `M` 个时间步，0表示一直持续工作。默认为0。
+- `tick_wait_start`：设定该神经元组在第 `N` 个时间步时启动，0表示不启动。默认为1。
+- `tick_wait_end`：设定该神经元组持续工作 `M` 个时间步，0表示**永远持续工作**。默认为0。
+- `unrolling_factor`：该参数与后端相关。展开因子表示神经元将被展开，部署至更多的物理核上，以降低延迟，并提高吞吐率。
 - `name`：可选，为该对象命名。
 
 #### LIF神经元
@@ -66,10 +82,10 @@ n1 = pb.neuron.IF(shape=10, threshold=127, reset_v=0, keep_shape=False, delay=1,
 LIF神经元实现了“泄露-积分-发射”神经元模型，其调用方式及参数如下：
 
 ```python
-n1 = pb.neuron.LIF(shape=128, threshold=127, reset_v=0, leaky_v=-1, keep_shape=False, name='n1')
+n1 = pb.neuron.LIF(shape=128, threshold=127, reset_v=0, leak_v=-1, keep_shape=False, name='n1')
 ```
 
-- `leaky_v`：LIF神经元的泄露值（有符号）。其他参数含义与IF神经元相同。
+- `leak_v`：LIF神经元的泄露值（有符号）。其他参数含义与IF神经元相同。
 
 #### Tonic Spiking神经元
 
@@ -163,7 +179,7 @@ print(output)
 PAIBox中，突触用于连接不同神经元组，并包含了连接关系以及权重信息。以全连接类型的突触为实例：
 
 ```python
-s1= pb.synapses.NoDecay(source=n1, dest=n2, weights=weight1, conn_type=pb.synapses.ConnType.All2All, name='s1')
+s1= pb.synapses.NoDecay(source=n1, dest=n2, weights=weight1, conn_type=pb.SynConnType.All2All, name='s1')
 ```
 
 其中：
@@ -195,7 +211,7 @@ s1= pb.synapses.NoDecay(source=n1, dest=n2, weights=weight1, conn_type=pb.synaps
 
 两组神经元之间依次单对单连接，这要求**前向与后向神经元数目相同**。其权重 `weights` 主要有以下几种输入类型：
 
-- 标量：默认为1。这表示前层的各个神经元输出线性地输入到后层神经元。这种情况等同于 `ConnType.BYPASS` 旁路连接。
+- 标量：默认为1。这表示前层的各个神经元输出线性地输入到后层神经元，即 $\lambda\cdot\mathbf{I}$
 
   ```python
   n1 = pb.neuron.IF(shape=5,threshold=1)
@@ -208,6 +224,7 @@ s1= pb.synapses.NoDecay(source=n1, dest=n2, weights=weight1, conn_type=pb.synaps
   ```
 
   其权重以标量的形式储存。由于在运算时标量会随着矩阵进行广播，因此计算正确且节省了存储开销。
+
 - 数组：尺寸要求为 `(N2,)`，可以自定义每组对应神经元之间的连接权重。如下例所示，设置 `weights` 为 `[1, 2, 3, 4, 5]`，
 
   ```python
@@ -225,6 +242,10 @@ s1= pb.synapses.NoDecay(source=n1, dest=n2, weights=weight1, conn_type=pb.synaps
   ```
 
   其权重实际上为 `N*N` 矩阵，其中 `N` 为前向/后向神经元组数目。
+
+#### Identity 恒等映射
+
+具有缩放因子的单对单连接，即 `One2One` 中权重项为标量的特殊情况。
 
 #### MatConn 一般连接
 
@@ -457,8 +478,8 @@ class fcnet(pb.Network):
         self.i1 = pb.InputProj(input=pe, shape_out=(784,))
         self.n1 = pb.neuron.IF(128, threshold=128, reset_v=0, tick_wait_start=1)
         self.n2 = pb.neuron.IF(10, threshold=128, reset_v=0, tick_wait_start=2)
-        self.s1 = pb.synapses.NoDecay(self.i1, self.n1, weights=weight1, conn_type=pb.synapses.ConnType.All2All)
-        self.s2 = pb.synapses.NoDecay(self.n1, self.n2, weights=weight2, conn_type=pb.synapses.ConnType.All2All)
+        self.s1 = pb.synapses.NoDecay(self.i1, self.n1, weights=weight1, conn_type=pb.SynConnType.All2All)
+        self.s2 = pb.synapses.NoDecay(self.n1, self.n2, weights=weight2, conn_type=pb.SynConnType.All2All)
 ```
 
 #### 容器类型
@@ -477,6 +498,51 @@ for i in range(5):
 ```
 
 如此，我们共例化了10个神经元，包括5个IF神经元、5个LIF神经元。在容器内的基本组件可通过下标进行访问、与其他基本组件连接。这与一般容器类型的用法相同。
+
+#### 构建子网络
+
+有时网络中会重复出现类似的结构，这时先构建子网络，再多次例化复用是个不错的选择。
+
+```python
+froom typing import Optional
+import paibox as pb
+
+class ReusedStructure(pb.Network):
+    def __init__(self, weight, tws, name: Optional[str] = None):
+        super().__init__(name=name)
+
+        self.pre_n = pb.LIF((10,), 10, tick_wait_start=tws)
+        self.post_n = pb.LIF((10,), 10, tick_wait_start=tws+1)
+        self.syn = pb.NoDecay(
+            self.pre_n, self.post_n, conn_type=pb.SynConnType.All2All, weights=weight
+        )
+
+class Net(pb.Network):
+    def __init__(self, w1, w2):
+        self.inp1 = pb.InputProj(1, shape_out=(10,))
+        subnet1 = ReusedStructure(w1, tws=1, name="Reused_Struct_0")
+        subnet2 = ReusedStructure(w2, tws=3, name="Reused_Struct_1")
+        self.s1 = pb.NoDecay(
+            self.inp1,
+            subnet1.pre_n,
+            conn_type=pb.SynConnType.One2One,
+        )
+        self.s2 = pb.NoDecay(
+            subnet1.post_n,
+            subnet2.pre_n,
+            conn_type=pb.SynConnType.One2One,
+        )
+
+        super().__init__(subnet1, subnet2) # Necessary!
+
+w1 = ...
+w2 = ...
+net = Net(w1, w2)
+```
+
+上述示例代码中，我们先创建需复用的子网络 `ReusedStructure`，其结构为 `pre_n` -> `syn` -> `post_n`。而后，在父网络 `Net` 中实例化两个子网络 `subnet1`、 `subnet2`，并与父网络其他部分连接，此时网络结构为：`inp1` -> `s1` -> `subnet1` -> `s2` -> `subnet2`。最后，在为 `pb.Network` 初始化时，传入子网络 `subnet1`、 `subnet2`。由此，父网络 `Net` 才能发现子网络组件。如果想取到 `Net` 内的 `subnet1` 对象，可通过索引其名字 `Net["Reused_Struct_0"]` 取到。
+
+上述示例为一个二级嵌套网络，对于三级嵌套网络或更高（不推荐使用），可参考上述方式构建。
 
 ## 仿真
 
@@ -503,6 +569,7 @@ sim = pb.Simulator(fcnet, start_time_zero=False)
 1. 在构建网络时，直接设置探针，即在网络内部例化探针对象。
 2. 在外部例化探针，并调用 `add_probe` 将其添加至仿真器内。仿真器内部将保存所有探针对象。
 3. 调用 `remove_probe` 方法可移除探针及其仿真数据。
+4. 请注意，目前探针仅能在最外层父网络内例化，子网络内的探针无法被发现。
 
 例化探针时需指定：
 
@@ -529,7 +596,7 @@ sim.add_probe(probe2)
 可监测的对象包括网络内部所有的属性。例如，神经元及突触的各类属性，常用的监测对象包括：
 
 - 输入节点的 `feature_map`。
-- 神经元：脉冲输出 `spike` （本层神经元产生的脉冲，但不一定传递至后继神经元）、**真实脉冲输出**  `output`（真正传递到后继神经元的脉冲）、真实脉冲输出（特征图形式）`feature_map`、膜电位 `voltage`。
+- 神经元：脉冲输出 `spike` （本层神经元产生的脉冲，但不一定传递至后继神经元）、基于硬件寄存器的**输出** `output`（大小为 `256*N` ）、特征图形式的脉冲输出 `feature_map `、膜电位 `voltage`。
 - 突触：输出 `output`。
 
 ### 仿真机理
@@ -558,17 +625,19 @@ sim.reset()
 
 调用 `run` 运行仿真，其中：
 
-- `duration`：指定仿真时间步长。
-- `reset`：是否对网络模型中组件进行复位。默认为 `False`。这可实现为一次仿真的不同时间步输入不同的数据。
+- `duration`：指定仿真时间步长。请注意，仿真时需要计算网络的最长路径(delay)，并计入仿真步长中以获取有效的输出。
+- `reset`：是否对网络模型中组件进行复位。默认为 `False`。这可实现在一次仿真的不同时间步，输入不同的数据。
 
 ## 编译、映射与导出
 
-模型映射将完成网络拓扑解析、映射、分配路由坐标、生成配置文件或帧数据，并最终导出为 `.bin` 或 `.npy` 格式交换文件等一系列工作。首先，例化 `Mapper`，然后传入所构建的网络模型，进行编译与帧导出即可。
+模型映射将完成网络拓扑解析、映射、分配路由坐标、生成配置文件或帧数据，并最终导出为 `.bin` 或 `.npy` 格式交换文件等一系列工作。
+
+例化 `Mapper`，传入所构建的网络模型，进行编译，最后导出帧即可。
 
 ```python
 mapper = pb.Mapper()
 mapper.build(fcnet)
-mapper.compile(weight_bit_optimization=True, grouping_optim_target="both")
+graph_info = mapper.compile(weight_bit_optimization=True, grouping_optim_target="both")
 mapper.export(write_to_file=True, fp="./debug/", format="npy", split_by_coordinate=False, local_chip_addr=(0, 0), export_core_params=False)
 
 # Clear all the results
@@ -579,16 +648,17 @@ mapper.clear()
 
 - `weight_bit_optimization`: 是否对权重精度进行优化处理。例如，将声明时为 INT8 的权重根据实际值当作更小的精度处理（当权重的值均在 [-8, 7] 之间，则可当作 INT4 进行处理）。默认由后端配置项内对应**编译选项**指定（默认开启）。
 - `grouping_optim_target`：指定神经元分组的优化目标，可以为 `"latency"`，`"core"` 或 `"both"`，分别代表以延时/吞吐率、占用核资源为优化目标、或二者兼顾。默认由后端配置项内对应**编译选项**指定（默认为 `both`）。
+- 同时，该方法将返回字典形式的编译后网络的信息。
 
 导出时有如下参数可指定：
 
 - `write_to_file`: 是否将配置帧导出为文件。默认为 `True`。
 - `fp`：导出目录。若未指定，则默认为后端配置选项 `build_directory` 所设置的目录（当前工作目录）。
 - `format`：导出交换文件格式，可以为 `bin`、`npy` 或 `txt`。默认为 `bin`。
-- `split_by_coordinate`：是否将配置帧以每个核坐标进行分割，由此生成的配置帧文件命名为 `config_core1`、`config_core2` 等。默认为 `False`。
+- `split_by_coordinate`：是否将配置帧以每个核坐标进行分割，由此生成的配置帧文件命名为"config_core1"、"config_core2"等。默认为 `False`。
 - `local_chip_addr`：本地芯片地址，元组格式表示。默认为后端配置项 `local_chip_addr` 所设置的默认值。
-- `export_core_params`: 是否导出实际使用核参数至json文件，可直观显示实际使用核的配置信息。默认为 `False`。
-- 同时，将返回模型的配置项字典。
+- `export_core_params`: 是否导出实际使用核参数至json文件，以直观显示实际使用核的配置信息。默认为 `False`。
+- 同时，该方法将返回模型的配置项字典。
 
 ### 后端配置项
 
@@ -606,5 +676,6 @@ BACKEND_CONFIG.output_dir = "./output"
 
 # Set cflag for enabling weight precision optimization
 set_cflag(enable_wp_opt=True, cflag="This is a cflag.")
->>> BACKEND_CONFIG.cflag = {"enable_wp_opt": True, "cflag": "This is a cflag."}
+BACKEND_CONFIG.cflag
+>>> {"enable_wp_opt": True, "cflag": "This is a cflag."}
 ```

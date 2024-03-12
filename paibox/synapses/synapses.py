@@ -8,26 +8,20 @@ from paicorelib import WeightPrecision as WP
 from paibox.base import DynamicSys, NeuDyn
 from paibox.exceptions import ShapeError
 from paibox.projection import InputProj
-from paibox.types import DataArrayType
+from paibox.types import DataArrayType, WeightType
 
 from .transforms import *
 
 __all__ = ["NoDecay"]
 
+RIGISTER_MASTER_KEY_FORMAT = "{0}.output"
+
 
 class Synapses:
-    """A map connected between neurons of the previous `Node`, \
-        and axons of the following `Node`.
-
-    User can use connectivity matrix or COO to represent the \
-        connectivity of synapses.
-    """
-
     def __init__(
         self,
         source: Union[NeuDyn, InputProj],
         dest: NeuDyn,
-        /,
         conn_type: ConnType,
     ) -> None:
         """
@@ -41,7 +35,7 @@ class Synapses:
         self._check(conn_type)
 
     def _check(self, conn_type: ConnType) -> None:
-        if conn_type is ConnType.One2One or conn_type is ConnType.BYPASS:
+        if conn_type is ConnType.One2One or conn_type is ConnType.Identity:
             if self.num_in != self.num_out:
                 raise ShapeError(
                     f"The number of source & destination neurons must "
@@ -73,7 +67,7 @@ class SynSys(Synapses, DynamicSys):
         return self.update(*args, **kwargs)
 
     @property
-    def weights(self) -> NDArray[np.int8]:
+    def weights(self) -> WeightType:
         raise NotImplementedError
 
     @property
@@ -100,8 +94,6 @@ class SynSys(Synapses, DynamicSys):
 class NoDecay(SynSys):
     """Synapses model with no decay."""
 
-    _excluded_vars = "syn_out"
-
     def __init__(
         self,
         source: Union[NeuDyn, InputProj],
@@ -124,8 +116,13 @@ class NoDecay(SynSys):
 
         if conn_type is ConnType.One2One:
             self.comm = OneToOne(self.num_in, weights)
-        elif conn_type is ConnType.BYPASS:
-            self.comm = ByPass(self.num_in)
+        elif conn_type is ConnType.Identity:
+            if not isinstance(weights, (int, np.integer)):
+                raise TypeError(
+                    f"Expected type int, np.integer, but got type {type(weights)}"
+                )
+
+            self.comm = Identity(self.num_in, weights)
         elif conn_type is ConnType.All2All:
             self.comm = AllToAll((self.num_in, self.num_out), weights)
         elif conn_type is ConnType.ToMaxPooling:
@@ -142,14 +139,14 @@ class NoDecay(SynSys):
         self.set_memory("_synout", np.zeros((self.num_out,), dtype=np.int32))
 
         # Register `self` for the destination `NeuDyn`.
-        dest.register_master(f"{self.name}.output", self)
+        dest.register_master(RIGISTER_MASTER_KEY_FORMAT.format(self.name), self)
 
     def update(
         self, spike: Optional[np.ndarray] = None, *args, **kwargs
     ) -> NDArray[np.int32]:
 
         # Retrieve the spike at index `timestamp` of the dest neurons
-        if self.dest._is_working():
+        if self.dest.is_working:
             if isinstance(self.source, InputProj):
                 synin = self.source.output.copy() if spike is None else spike
                 print("inp_syin:", self.source.copy())
@@ -162,7 +159,7 @@ class NoDecay(SynSys):
                 synin = self.source.output
         else:
             # Retrieve 0 to the dest neurons if it is not working
-            synin = np.zeros_like(self.source.spike)
+            synin = np.zeros_like(self.source.spike, dtype=np.bool_)
         if self.dest.max_pooling:
             print("进入poolmax and weights.shape", self.weights.shape)
             synin = np.expand_dims(synin, axis=1)
@@ -175,7 +172,7 @@ class NoDecay(SynSys):
 
     def reset_state(self, *args, **kwargs) -> None:
         # TODO Add other initialization methods in the future.
-        self.reset()  # Call reset of `StatusMemory`.
+        self.reset_memory()  # Call reset of `StatusMemory`.
 
     @property
     def output(self) -> NDArray[np.int32]:
@@ -193,11 +190,3 @@ class NoDecay(SynSys):
     def connectivity(self):
         """The connectivity matrix in `np.ndarray` format."""
         return self.comm.connectivity
-
-    def __repr__(self) -> str:
-        name = self.__class__.__name__
-        return (
-            f"{name}(name={self.name}, \n"
-            f'{" " * len(name)} source={self.source}, \n'
-            f'{" " * len(name)} dest={self.dest})'
-        )
