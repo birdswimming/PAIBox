@@ -9,7 +9,7 @@ from paibox.exceptions import ShapeError
 from paibox.types import DataArrayType, IntScalarType, WeightType
 from paibox.utils import is_shape
 
-__all__ = ["ConnType", "OneToOne", "AllToAll", "Identity", "MaskedLinear"]
+__all__ = ["ConnType", "OneToOne", "AllToAll", "Identity", "MaskedLinear", "ToMaxPooling"]
 
 
 MAX_INT1 = np.int8(1)

@@ -149,7 +149,7 @@ class NoDecay(SynSys):
         if self.dest.is_working:
             if isinstance(self.source, InputProj):
                 synin = self.source.output.copy() if spike is None else spike
-                print("inp_syin:", self.source.copy())
+                print("inp_syin:", synin)
             elif self.dest.SNN_enable:
                 idx = self.dest.timestamp % HwConfig.N_TIMESLOT_MAX
                 synin = self.source.output[idx].copy() if spike is None else spike

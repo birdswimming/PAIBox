@@ -403,9 +403,9 @@ class Neuron(MetaNeuron, NeuDyn):
         leak_v: int = 0,
         synaptic_integration_mode: SIM = SIM.MODE_DETERMINISTIC,
         bit_truncation: int = 0,
-        spike_width_format: SpikeWidthFormat,
-        pool_max_en: MaxPoolingEnable,
-        SNN_enable: SNNModeEnable,
+        spike_width_format: SpikeWidthFormat = SpikeWidthFormat.WIDTH_1BIT,
+        pool_max_en: MaxPoolingEnable = MaxPoolingEnable.DISABLE,
+        SNN_enable: SNNModeEnable =SNNModeEnable.ENABLE,
         *,
         delay: int = 1,
         tick_wait_start: int = 1,
@@ -525,7 +525,7 @@ class Neuron(MetaNeuron, NeuDyn):
             self._vjt = super()._max_pooling(x)
             print(self._vjt)
             return self._vjt
-        self._inner_spike, self._vjt, self._debug_thres_mode = super()._meta_update(
+        self._inner_spike, self._vjt, self._debug_thres_mode = super().update(
             x, self._vjt
         )
         # If the incoming membrane potential (30-bit signed) overflows, the chip will automatically handle it.

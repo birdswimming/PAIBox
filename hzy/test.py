@@ -36,13 +36,13 @@ class fcnet(pb.Network):
             self.i1,
             self.relu,
             weights=np.array([[1,-2, 3, -4],[1,-2, 3, -4],[1,-2, 3, -4],[1,-2, 3, -4]]),
-            conn_type=pb.synapses.ConnType.All2All,
+            conn_type=pb.synapses.SynConnType.All2All,
         )
         self.maxpool = pb.neuron.MaxPooling(shape=3, kernel_size=2, stride=1)
         self.s2 = pb.synapses.NoDecay(
             self.relu,
             self.maxpool,
-            conn_type=pb.synapses.ConnType.ToMaxPooling,
+            conn_type=pb.synapses.SynConnType.ToMaxPooling,
         )
         self.probe1 = pb.simulator.Probe(target=self.maxpool, attr="voltage")
 
