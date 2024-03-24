@@ -9,24 +9,14 @@ from paibox.exceptions import ShapeError
 from paibox.types import DataArrayType, IntScalarType, SynOutType, WeightType
 from paibox.utils import is_shape
 
-from .conv_utils import (
-    Size1Type,
-    Size2Type,
-    _conv1d_faster,
-    _conv1d_unroll,
-    _conv2d_faster,
-    _conv2d_unroll,
-    _Order2d,
-    _Order3d,
-)
+from .conv_utils import _conv1d_faster, _conv1d_unroll, _conv2d_faster, _conv2d_unroll
+from ..types import Size1Type, Size2Type, _Order2d, _Order3d
 
 __all__ = [
-    "GeneralConnType",
     "OneToOne",
     "AllToAll",
     "Identity",
     "MaskedLinear",
-    "Conv1dForward",
     "Conv2dForward",
 ]
 
@@ -149,7 +139,9 @@ class OneToOne(Transform):
     @property
     def connectivity(self):
         return (
-            (self.weights * np.eye(self.num, dtype=np.bool_)).astype(self.conn_dtype)
+            (self.weights * np.identity(self.num, dtype=np.bool_)).astype(
+                self.conn_dtype
+            )
             if self.weights.ndim == 0
             else np.diag(self.weights).astype(self.conn_dtype)
         )
