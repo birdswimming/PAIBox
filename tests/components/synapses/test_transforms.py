@@ -3,7 +3,7 @@ from typing import Tuple
 import numpy as np
 import pytest
 
-from paibox.synapses.transforms import *
+from paibox.components.synapses import transforms as tfm
 from paibox.utils import shape2num
 
 
@@ -31,7 +31,7 @@ class TestTransforms:
     )
     def test_OneToOne_dtype(self, weight):
         num = 3
-        f = OneToOne(num, weight)
+        f = tfm.OneToOne(num, weight)
         x = np.array([1, 0, 1], dtype=np.bool_)
         y = f(x)
         expected = x * weight
@@ -43,7 +43,7 @@ class TestTransforms:
 
     def test_OneToOne(self):
         weight = np.array([1, 2, 3, 4], dtype=np.int8)
-        f = OneToOne(4, weight)
+        f = tfm.OneToOne(4, weight)
         assert f.connectivity.shape == (4, 4)
 
         # The last spike is an array.
@@ -80,7 +80,7 @@ class TestTransforms:
 
         num_in, num_out = 10, 20
         x = np.random.randint(2, size=(10,))
-        f = AllToAll((num_in, num_out), weight)
+        f = tfm.AllToAll((num_in, num_out), weight)
         y = f(x)
         expected = np.full((num_out,), np.sum(x, axis=None), dtype=np.int32) * weight
 
@@ -136,7 +136,7 @@ class TestTransforms:
     def test_AllToAll_array(self, shape, x, weights, expected_dtype):
         """Test `AllToAll` when weights is an array"""
 
-        f = AllToAll(shape, weights)
+        f = tfm.AllToAll(shape, weights)
         y = f(x)
         expected = x @ weights.copy().astype(np.int32)
 
@@ -175,7 +175,7 @@ class TestTransforms:
         ids=["weights_int8_1", "weights_int8_2", "weights_bool", "weights_int8_3"],
     )
     def test_MaskedLinear_conn(self, shape, x, weights, expected_dtype):
-        f = MaskedLinear(shape, weights)
+        f = tfm.MaskedLinear(shape, weights)
         y = f(x)
         expected = x @ weights.copy().astype(np.int32)
 
@@ -255,7 +255,7 @@ class TestTransforms:
 
         out_shape = ((in_shape[0] + 2 * padding[0] - kernel_size[0]) // stride[0] + 1,)
 
-        f = Conv1dForward(in_shape, out_shape, kernel, stride, padding, fm_order)
+        f = tfm.Conv1dForward(in_shape, out_shape, kernel, stride, padding, fm_order)
 
         if fm_order == "CL":
             fm_shape = (in_channels,) + in_shape
@@ -360,7 +360,7 @@ class TestTransforms:
             (in_shape[1] + 2 * padding[1] - kernel_size[1]) // stride[1] + 1,
         )
 
-        f = Conv2dForward(in_shape, out_shape, kernel, stride, padding, fm_order)
+        f = tfm.Conv2dForward(in_shape, out_shape, kernel, stride, padding, fm_order)
 
         if fm_order == "CHW":
             fm_shape = (in_channels,) + in_shape
