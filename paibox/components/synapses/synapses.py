@@ -43,7 +43,18 @@ class FullConn(FullConnSyn):
             - name: name of the full-connected synapses. Optional.
         """
         super().__init__(source, dest, weights, conn_type, name)
+        self._n_copied = 0
+        self._init_weights = weights
+        self._init_conn_type = conn_type
+        
+    def __deepcopy__(self, dest) -> "FullConn":
+        self._n_copied += 1
 
+        return FullConn(source=self.source, 
+                        dest=dest, 
+                        weights=self._init_weights, 
+                        conn_type=self._init_conn_type, 
+                        name=f"{self.name}_copied_{self._n_copied}",)
 
 class NoDecay(FullConn):
     def __init__(
