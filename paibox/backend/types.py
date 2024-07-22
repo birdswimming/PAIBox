@@ -15,7 +15,7 @@ else:
 from paicorelib import CoreMode, HwConfig
 
 from paibox.base import PAIBoxObject
-from paibox.components import FullConnectedSyn, InputProj, Neuron
+from paibox.components import FullConnectedSyn, InputProj, Neuron, EdgeSlice, InputSlice, NeuronSlice
 
 __all__ = [
     "NodeName",
@@ -24,6 +24,10 @@ __all__ = [
     "EdgeType",
     "SourceNodeType",
     "DestNodeType",
+    "NodeSliceType",
+    "EdgeSliceType",
+    "SourceSliceType",
+    "DestSliceType",
     "NodePosition",
     "NodeDegree",
     "NodeAttr",
@@ -41,9 +45,13 @@ __all__ = [
 NodeName: TypeAlias = str
 EdgeName: TypeAlias = str
 NodeType: TypeAlias = Union[InputProj, Neuron]
+NodeSliceType: TypeAlias = Union[InputSlice, NeuronSlice]
 EdgeType: TypeAlias = FullConnectedSyn
+EdgeSliceType: TypeAlias = EdgeSlice
 SourceNodeType: TypeAlias = NodeType
+SourceSliceType: TypeAlias = NodeSliceType
 DestNodeType: TypeAlias = Neuron
+DestSliceType: TypeAlias = NeuronSlice
 
 WeightRamType: TypeAlias = NDArray[np.uint64]  # uint64 weights mapped in weight RAM
 _COORD_UNSET = 0

@@ -474,7 +474,7 @@ class RoutingGroup:
         """Wasted core placements"""
 
     def assign(
-        self, assigned: list[Coord], wasted: list[Coord], chip_coord: Coord
+        self, assigned: list[Coord], wasted: list[Coord], chip_coords: list[Coord]
     ) -> None:
         self.assigned_coords = assigned
         self.wasted_coords = wasted
@@ -484,7 +484,7 @@ class RoutingGroup:
         for cb in self:
             n = cb.n_core_required
             cb.core_coords = assigned[cur_i : cur_i + n]
-            cb.chip_coord = chip_coord
+            cb.chip_coords += chip_coords
             cur_i += n
 
     def core_block_alloc(self) -> None:
@@ -599,10 +599,27 @@ class RoutingRoot:
         return core_loc, chip_idx_loc, routing_path
 
     def place_routing_group(self, routing_group: RoutingGroup) -> None:
+        print(f"routing_group: {[cb.name for cb in routing_group.core_blocks]}")
+        valid_coords = []
+        wasted_coords = []
+        chip_coords = []
+        if len(routing_group.core_blocks) == 1 and len(routing_group.core_blocks[0].cb_seg) != 1:
+            for cb_seg in routing_group.core_blocks[0].cb_seg:
+                n_core_req = cb_seg[0].stop - cb_seg[0].start
+                temp_valid_coords, temp_wasted_coords, temp_chip_coords = self.place_group(n_core_req)
+                valid_coords += temp_valid_coords
+                wasted_coords += temp_wasted_coords
+                chip_coords += temp_chip_coords
+        else:
+            n_core_req = routing_group.n_core_required
+            valid_coords, wasted_coords, chip_coords = self.place_group(n_core_req)
+        routing_group.assign(valid_coords, wasted_coords, chip_coords)
+
+    def place_group(self, n_core_req: int) -> tuple[list[Coord], list[Coord], list[ChipCoord]]:
         """Place a routing group in the chip list. Assign each core blocks with routing coordinates &   \
             make sure they are routable.
         """
-        n_core_req = routing_group.n_core_required
+        print(n_core_req)
         n_core_cost = 1 << (n_core_req - 1).bit_length()  # n_core_req <= 2^X
 
         if n_core_cost > HwConfig.N_CORE_OFFLINE:
@@ -619,6 +636,7 @@ class RoutingRoot:
 
         for i, rpath in _routing_path_generator(n_core_cost, rpath_start):
             leaf_coord = RoutingCoord(*reversed(rpath))
+            print(f"leaf_coord: {leaf_coord}")
             # Record the used L2 clusters
             if (core_insert_loc + i) % (HwConfig.N_SUB_ROUTING_NODE**Level.L2) == 0:
                 L2_coord = RoutingCoord(*reversed(rpath[Level.L2 :]))
@@ -629,7 +647,7 @@ class RoutingRoot:
             else:
                 wasted_coords.append(leaf_coord.to_coord())
 
-        routing_group.assign(valid_coords, wasted_coords, self.chip_list[chip_idx_loc])
+        return valid_coords, wasted_coords, [self.chip_list[chip_idx_loc]]
 
     def insert_routing_group(self, routing_group: RoutingGroup) -> bool:
         """Insert a `RoutingGroup` in the routing tree. Assign each core blocks with \

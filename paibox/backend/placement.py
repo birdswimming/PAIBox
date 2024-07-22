@@ -6,7 +6,7 @@ import numpy as np
 from paicorelib import LCN_EX, ChipCoord, Coord, CoreMode, HwConfig, MaxPoolingEnable
 from paicorelib import WeightPrecision as WP
 
-from paibox.components import FullConnectedSyn, Neuron
+from paibox.components import FullConnectedSyn, Neuron, MatMul2d, NeuronSlice, EdgeSlice
 from paibox.exceptions import GraphBuildError, ResourceError, TruncationWarning
 from paibox.types import WeightType
 from paibox.utils import check_attr_same, count_unique_elem
@@ -26,18 +26,60 @@ from .types import (
     AxonSegment,
     CoreAbstract,
     DestNodeType,
+    DestSliceType,
     NeuSegment,
     NeuSegOfCoreBlock,
     NeuSegOfCorePlm,
     SourceNodeType,
+    SourceSliceType,
     WeightRamType,
 )
 
 
+class EdgeGroup:
+    def __init__(self, *edges: FullConnectedSyn, routing_id: int) -> None:
+        self._edges = edges
+        self.rg_id = routing_id
+    
+    def build_coreblock(self) -> list['CoreBlock']:
+        partition_main:FullConnectedSyn = None
+        for edge in self._edges:
+            if isinstance(edge, MatMul2d):
+                if partition_main is not None:
+                    raise NotImplementedError("Only one MatMul2d is supported")
+                partition_main = edge
+        if partition_main is None:
+            edge_slices:list[EdgeSlice] = []
+            for edge in self._edges:
+                edge_slices.append(EdgeSlice(edge, None, None))
+            return [CoreBlock.build(*edge_slices, routing_id = self.rg_id)]
+            
+        mat_mul = partition_main
+        shape_in = mat_mul.shape_in
+        shape_out = mat_mul.shape_out
+        in_slice_len = shape_in[1]
+        out_slice_len = shape_out[1]
+        
+        input_slices = [slice(i*in_slice_len, (i+1)*in_slice_len) for i in range(shape_in[0])]
+        output_slices = [slice(i*out_slice_len, (i+1)*out_slice_len) for i in range(shape_out[0])]
+        
+        coreblocks:list[CoreBlock] = []
+        for input_slice, output_slice in zip(input_slices, output_slices):
+            edge_slices:list[EdgeSlice] = []
+            for edge in self._edges:
+                edge_slices: list[EdgeSlice] = []
+                if edge == partition_main:
+                    edge_slices.append(EdgeSlice(edge, input_slice, output_slice))
+                else:
+                    edge_slices.append(EdgeSlice(edge, None, output_slice))
+            coreblocks.append(CoreBlock.build(*edge_slices, routing_id = self.rg_id))
+        return coreblocks
+                
+
 class CoreBlock(CoreAbstract):
     def __init__(
         self,
-        *parents: FullConnectedSyn,
+        *parents: EdgeSlice,
         routing_id: int,
         seed: int,
         mode: CoreMode = CoreMode.MODE_SNN,
@@ -101,15 +143,17 @@ class CoreBlock(CoreAbstract):
             optim_target,
         )
 
+    # not implemented
     def core_plm_alloc(self) -> None:
         """Allocate `CoreBlock` to physical cores."""
         if not self._lcn_locked:
             raise GraphBuildError("allocate core placements after 'lcn_ex' is locked.")
-
+        print(self.name)
         for i, coord in enumerate(self.core_coords):
             # assert self.get_raw_weight_of_coord(i)[0].shape[0] == self.n_axon
             self.core_placements[coord] = CorePlacement.build(self, i)
-
+    
+    # not implemented
     def _get_syn_of(
         self, src: SourceNodeType, dest: DestNodeType
     ) -> Optional[FullConnectedSyn]:
@@ -147,24 +191,25 @@ class CoreBlock(CoreAbstract):
     """Interfaces"""
 
     @property
-    def obj(self) -> tuple[FullConnectedSyn, ...]:
+    def obj(self) -> tuple[EdgeSlice, ...]:
         return self._parents
 
+    # not implemented
     @property
     def shape(self) -> tuple[int, int]:
         return (count_unique_elem(self.source), count_unique_elem(self.dest))
 
     @property
-    def source(self) -> list[SourceNodeType]:
+    def source(self) -> list[SourceSliceType]:
         """Ordered unique source nodes."""
         return list(set([parent.source for parent in self.obj]))
 
     @property
-    def axons(self) -> list[SourceNodeType]:
+    def axons(self) -> list[SourceSliceType]:
         return self.source
 
     @property
-    def dest(self) -> list[DestNodeType]:
+    def dest(self) -> list[DestSliceType]:
         """Ordered unique destination nodes."""
         return list(set([parent.dest for parent in self.obj]))
 
@@ -352,7 +397,7 @@ class CoreBlock(CoreAbstract):
         return ", ".join(n.name for n in self.obj)
 
     @classmethod
-    def build(cls, *synapses: FullConnectedSyn, routing_id: int, seed: int = 0):
+    def build(cls, *synapses: EdgeSlice, routing_id: int, seed: int = 0):
         """Group synapses & build `CoreBlock`."""
         # FIXME where does the parameter check do?
         if seed > (1 << 64) - 1:
@@ -363,6 +408,7 @@ class CoreBlock(CoreAbstract):
 
         return cls(*synapses, routing_id=routing_id, seed=seed)
 
+    # not implemented
     @classmethod
     def export_core_plm_config(cls, cb: "CoreBlock") -> CoreConfInChip:
         """Export the parameters of the core into a dictionary."""

@@ -34,19 +34,25 @@ from .graphs import (
     get_succ_cb_by_node,
     toposort,
 )
-from .placement import CoreBlock, aligned_coords, max_lcn_of_cb
+from .placement import CoreBlock, aligned_coords, max_lcn_of_cb, EdgeGroup
 from .routing import RoutingGroup, RoutingRoot
-from .types import NeuSegment, NodeDegree, NodeType, SourceNodeType
+from .types import NeuSegment, NodeDegree, NodeType, SourceNodeType, NeuSegOfCoreBlock
 
 __all__ = ["Mapper"]
 
-
+def print_neu_seg(neu_segs: NeuSegOfCoreBlock):
+    for i, neu_seg in enumerate(neu_segs):
+        print(f"Core[{i}]:")
+        for neu in neu_seg:
+            print(f"\t{neu.target.name}[{neu.index}]")
+     
 class Mapper:
     graph = PAIGraph()
     graph_info: GraphInfo
 
     def __init__(self) -> None:
         self.core_blocks: list[CoreBlock] = []
+        self.edge_groups: list[EdgeGroup] = []
         """List for core blocks in the network."""
         self.succ_core_blocks: dict[CoreBlock, list[CoreBlock]] = defaultdict(list)
         self.input_core_blocks: dict[SourceNodeType, list[CoreBlock]] = defaultdict(
@@ -205,6 +211,7 @@ class Mapper:
         """Allocate the core blocks to the core placments."""
         self.core_allocation()
 
+        raise NotImplemented
         """Export configurations."""
         return self.config_export()
 
@@ -216,10 +223,17 @@ class Mapper:
         partitioned_edges = self.graph.graph_partition()
 
         for part in partitioned_edges:
-            self.core_blocks.append(
-                CoreBlock.build(*part.edges, seed=0, routing_id=part.rg_id)
-            )
+            self.edge_groups.append(EdgeGroup(*part.edges, routing_id = part.rg_id))
+            
+        for edge_group in self.edge_groups:
+            self.core_blocks.extend(edge_group.build_coreblock())
+            
+        for cb in self.core_blocks:
+            print(f"{cb.name}:")
+            for syn in cb._parents:
+                print(syn.info)        
 
+        raise NotImplementedError
         for cur_cb in self.core_blocks:
             succ_cbs = []
             # cur_cb == cb is possible
@@ -293,6 +307,9 @@ class Mapper:
             cb.group_neurons(
                 optim_target=_BACKEND_CONTEXT.cflags["grouping_optim_target"]
             )
+            print (cb.name)
+            print_neu_seg (cb.neuron_segs_of_cb)
+            print("************************\n")
 
         # Optimize the order of routing groups
         # self.routing_groups = reorder_routing_groups(self.succ_routing_groups)

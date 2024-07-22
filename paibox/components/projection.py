@@ -172,6 +172,18 @@ class InputProj(Projection, TimeRelatedNode):
     def tick_wait_end(self) -> int:
         return 0  # Fixed
 
+class InputSlice:
+    def __init__(self, input:InputProj, slice: slice):
+        self.input = input
+        self.index = slice
+    @property
+    def num_out(self) -> int:
+        return self.index.stop - self.index.start
+    
+    @property
+    def info(self) -> str:
+        return f"InputSlice {self.input.name}[{self.index.start}:{self.index.stop}]"
+
 
 def _call_with_ctx(f: Callable[..., DataType], *args, **kwargs) -> DataType:
     try:
