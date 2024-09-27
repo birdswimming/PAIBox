@@ -10,13 +10,25 @@ from paicorelib import RoutingStatus as Status
 from paicorelib import get_routing_consumption
 from paicorelib.routing_defs import MAX_ROUTING_PATH_LENGTH
 
-from paibox.exceptions import ResourceError, RoutingError
+from paibox.exceptions import ResourceError, RoutingError, GraphBuildError
 
 from .conf_template import CorePlmConfInChip
 from .placement import CoreBlock, CorePlacement, EmptyCorePlacement
-
+from .types import SourceSliceType
 __all__ = ["RoutingGroup", "RoutingRoot"]
 
+def Coord2RoutingCoord(coord: Coord) -> RoutingCoord:
+    directions: list[Direction] = []
+    x = coord.x
+    y = coord.y
+
+    for i in range(MAX_ROUTING_PATH_LENGTH):
+        # 每个循环，提取最高位（移动了 4-i 位）到最低位，恢复 value_x 和 value_y
+        shift = 4 - i
+        value_x = (x >> shift) & 0b1  # 取出当前位的值
+        value_y = (y >> shift) & 0b1
+        directions.append(Direction((value_x, value_y)))
+    return RoutingCoord(*directions)    
 
 class RoutingCluster:
     def __init__(
@@ -457,6 +469,37 @@ class RoutingCluster:
 
         return RoutingCoord(*reversed(path))
 
+# each sub routing group should be able to route by single coord
+class SubRoutingGroup:
+    index = 0
+    def __init__(self, routing_elements: list["CoreBlock|SubRoutingGroup"]) -> None:
+        
+        core_blocks:list[CoreBlock] = []
+        sub_rgs:list[SubRoutingGroup] = []
+        self.routing_elements:list["CoreBlock|SubRoutingGroup"] = routing_elements
+        routing_elements = sorted(routing_elements, key=lambda x: x.n_core_required, reverse=True)
+        sub_n_core_wasted = 0 if isinstance(routing_elements[-1], CoreBlock) else routing_elements[-1].n_core_wasted
+        
+        sub_n_core_required = sum(element.n_core_required for element in self.routing_elements)
+        self.n_core_required = 1 << (sub_n_core_required - 1).bit_length()
+        self.n_core_wasted = self.n_core_required - sub_n_core_required + sub_n_core_wasted
+        self.name = f"SubRoutingGroup[{SubRoutingGroup.index}]"
+        SubRoutingGroup.index += 1
+        
+        
+    # return Coord that wasted in subrouting group
+    def assign(self, allocated: list[Coord], chip_coord: Coord) -> tuple[list[Coord], list[Coord]]:
+        cur_i = 0
+        assigned_coords:list[Coord] = []
+        wasted_coords:list[Coord] = []
+        for element in self.routing_elements:
+            n = element.n_core_required
+            print(f"element: {element.name}, {n} cores, start at {Coord2RoutingCoord(allocated[cur_i])}")
+            assigned, wasted = element.assign(allocated[cur_i : cur_i + n], chip_coord)
+            assigned_coords = assigned + assigned_coords
+            wasted_coords = wasted_coords + wasted
+            cur_i += n
+        return assigned_coords, wasted_coords + allocated[cur_i:]
 
 class RoutingGroup:
     """Core blocks located within a routing group are routable.
@@ -466,26 +509,31 @@ class RoutingGroup:
 
     def __init__(self, *cb: CoreBlock) -> None:
         self.core_blocks = list(cb)
+        self.sub_route_group: SubRoutingGroup = None
         self.assigned_coords: list[Coord] = []
         """Assigned core coordinates in the routing group"""
         self.wasted_coords: list[Coord] = []
         """Wasted core coordinates in routing group"""
         self.wasted_core_plm: dict[Coord, EmptyCorePlacement] = {}
         """Wasted core placements"""
+        self.sub_n_core_wasted = 0
+        
+    def sub_route(self) -> None:
+        route_elements:list["CoreBlock|SubRoutingGroup"] = []
+        for cb in self.core_blocks:
+            if cb.independent_route:
+                route_elements.append(SubRoutingGroup([cb]))
+            else:
+                route_elements.append(cb)
+        self.sub_route_group = SubRoutingGroup(route_elements)
 
     def assign(
-        self, assigned: list[Coord], wasted: list[Coord], chip_coord: Coord
+        self, allocated: list[Coord], chip_coord: Coord
     ) -> None:
+        print(f"route_group: {self.sub_route_group.name} assigned from {Coord2RoutingCoord(allocated[0])}")
+        assigned, wasted = self.sub_route_group.assign(allocated, chip_coord)
         self.assigned_coords = assigned
         self.wasted_coords = wasted
-
-        # Assign the coordinates to each core block inside the routing group.
-        cur_i = 0
-        for cb in self:
-            n = cb.n_core_required
-            cb.core_coords = assigned[cur_i : cur_i + n]
-            cb.chip_coord = chip_coord
-            cur_i += n
 
     def core_block_alloc(self) -> None:
         for cb in self:
@@ -509,6 +557,14 @@ class RoutingGroup:
     def n_core_required(self) -> int:
         """The actual number of cores required by the routing group."""
         return sum(cb.n_core_required for cb in self)
+
+    @property
+    def n_core_cost(self) -> int:
+        return self.sub_route_group.n_core_required
+    
+    @property
+    def n_core_wasted(self) -> int:
+        return self.sub_route_group.n_core_wasted
 
     @property
     def routing_cost(self) -> RoutingCost:
@@ -536,6 +592,52 @@ class RoutingGroup:
     def __iter__(self) -> Iterator[CoreBlock]:
         return self.core_blocks.__iter__()
 
+    def group_axons(self) -> None:
+        for cb in self.core_blocks:
+            if not cb._lcn_locked:
+                raise GraphBuildError("get axon segments after 'lcn_ex' is locked.")
+        
+        # find the overlap part of the axons of each core block
+        # suppose that a slice is either in only one core block or in all core blocks
+        # suppose that the axon slice will not be splitted in this step
+        
+        # this problem can be transformed to a allocation problem,
+        # each core block owns an independent axon memory, and the axon slices shared by multiple core blocks
+        # should be allocated from the same idle axon memory
+        total_axons:set[SourceSliceType] = set()
+        shared_axons: list[SourceSliceType] = []
+        for index, cb in enumerate(self.core_blocks):
+            axons = cb.axons
+            if index == 0:
+                total_axons = set(axons)
+            elif index == 1:
+                shared_axons = list(total_axons.intersection(axons))
+                total_axons.update(axons)
+            else:
+                for axon in shared_axons:
+                    if axon not in axons:
+                        raise GraphBuildError(f"axon {axon} is not in core block {index}")
+                total_axons.update(axons)
+        
+        # no shared axons, each core block group_axons separately
+        print(f"shared_axons: {len(shared_axons)}")
+        if len(shared_axons) == 0:
+            for cb in self.core_blocks:
+                cb.group_axons()
+                print(f"cb: {cb.name}:")
+                for source, axon_seg in cb.axon_segments.items():
+                    print(f"\t{source.info}: {axon_seg}")
+                print()
+        
+        # shared axons should group to the same axon segment
+        # not perfect, but can be optimized in the future
+        else:
+            for cb in self.core_blocks:
+                cb.group_axons(shared_axons)
+                print(f"cb: {cb.name}:")
+                for source, axon_seg in cb.axon_segments.items():
+                    print(f"\t{source.info}: {axon_seg}")
+                print()
 
 @final
 class RoutingRoot:
@@ -566,10 +668,9 @@ class RoutingRoot:
         raise RoutingError(f"get leaf {leaf.tag} coordinate failed.")
 
     def get_insert_location(
-        self, n_core_incoming: int, n_core_required: int
+        self, n_core_incoming: int, n_core_wasted: int
     ) -> tuple[int, int, list[Direction]]:
         """Look for the insertion location of the incoming routing group."""
-        n_core_wasted = n_core_incoming - n_core_required
         # Look for n_core_aligned closest to cur_cost, where n_core_aligned = n*n_core_incoming
         n_core_aligned = _closet_multiple_above(self.n_core_total, n_core_incoming)
 
@@ -608,8 +709,14 @@ class RoutingRoot:
         """Place a routing group in the chip list. Assign each core blocks with routing coordinates &   \
             make sure they are routable.
         """
-        n_core_req = routing_group.n_core_required
-        n_core_cost = 1 << (n_core_req - 1).bit_length()  # n_core_req <= 2^X
+        routing_group.sub_route()
+        print(f"Routing Group:")
+        for cb in routing_group:
+            print(f"\t{cb.name}")
+        
+        n_core_cost = routing_group.n_core_cost
+        n_core_wasted = routing_group.n_core_wasted
+        print(f"\tcost: {n_core_cost}, wasted: {n_core_wasted}")
 
         if n_core_cost > HwConfig.N_CORE_OFFLINE:
             raise ResourceError(
@@ -618,10 +725,9 @@ class RoutingRoot:
             )
 
         core_insert_loc, chip_idx_loc, rpath_start = self.get_insert_location(
-            n_core_cost, n_core_req
+            n_core_cost, n_core_wasted
         )
-        valid_coords = []
-        wasted_coords = []
+        allocated_coords:list[Coord] = []
 
         for i, rpath in _routing_path_generator(n_core_cost, rpath_start):
             leaf_coord = RoutingCoord(*reversed(rpath))
@@ -629,13 +735,10 @@ class RoutingRoot:
             if (core_insert_loc + i) % (HwConfig.N_SUB_ROUTING_NODE**Level.L2) == 0:
                 L2_coord = RoutingCoord(*reversed(rpath[Level.L2 :]))
                 self.used_L2_clusters[chip_idx_loc].append(L2_coord)
+            allocated_coords.append(leaf_coord.to_coord())
 
-            if i < n_core_req:
-                valid_coords.append(leaf_coord.to_coord())
-            else:
-                wasted_coords.append(leaf_coord.to_coord())
-
-        routing_group.assign(valid_coords, wasted_coords, self.chip_list[chip_idx_loc])
+        routing_group.assign(allocated_coords, self.chip_list[chip_idx_loc])
+        print()
 
     def insert_routing_group(self, routing_group: RoutingGroup) -> bool:
         """Insert a `RoutingGroup` in the routing tree. Assign each core blocks with \
