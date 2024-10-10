@@ -11,7 +11,7 @@ from paicorelib import RoutingStatus as Status
 from paicorelib import get_routing_consumption
 from paicorelib.routing_defs import MAX_ROUTING_PATH_LENGTH
 
-from paibox.exceptions import ResourceError, RoutingError
+from paibox.exceptions import ResourceError, RoutingError, GraphBuildError
 
 from .conf_types import CorePlmConfInChip
 from paibox.exceptions import ResourceError, RoutingError, GraphBuildError
