@@ -1,0 +1,293 @@
+Partition 0:
+	s0_copied_1:inp1 -> n0_copied_1
+	s0:inp1 -> n0
+
+Partition 1:
+	s2:n1 -> n2
+	s4:n0_copied_1 -> n2
+
+Partition 2:
+	s1:n0 -> n1
+
+Partition 3:
+	s3:n2 -> n3
+
+CoreBlock_0:
+	routing_id: 0
+	s0_copied_1: InputSlice inp1[0:450] -> n0_copied_1[0:450]
+	s0: InputSlice inp1[0:450] -> n0[0:450]
+
+CoreBlock_1:
+	routing_id: 1
+	s2: n1[0:150] -> n2[0:300]
+	s4: n0_copied_1[0:450] -> n2[0:300]
+
+CoreBlock_2:
+	routing_id: 1
+	s2: n1[150:300] -> n2[300:600]
+	s4: n0_copied_1[0:450] -> n2[300:600]
+
+CoreBlock_3:
+	routing_id: 1
+	s2: n1[300:450] -> n2[600:900]
+	s4: n0_copied_1[0:450] -> n2[600:900]
+
+CoreBlock_4:
+	routing_id: 2
+	s1: n0[0:450] -> n1[0:450]
+
+CoreBlock_5:
+	routing_id: 3
+	s3: n2[0:900] -> n3[0:900]
+
+succ core block of CoreBlock_0:
+	CoreBlock_1
+	CoreBlock_2
+	CoreBlock_3
+	CoreBlock_4
+
+succ core block of CoreBlock_1:
+	CoreBlock_5
+
+succ core block of CoreBlock_2:
+	CoreBlock_5
+
+succ core block of CoreBlock_3:
+	CoreBlock_5
+
+succ core block of CoreBlock_4:
+	CoreBlock_1
+	CoreBlock_2
+	CoreBlock_3
+
+succ core block of CoreBlock_5:
+
+input core block of inp1:
+	CoreBlock_0
+
+checking cb: CoreBlock_0
+checking cb: CoreBlock_4
+checking cb: CoreBlock_2
+checking cb: CoreBlock_1
+checking cb: CoreBlock_3
+checking cb: CoreBlock_5
+Routing Group[0]:
+	CoreBlock_0
+
+Routing Group[1]:
+	CoreBlock_1
+	CoreBlock_2
+	CoreBlock_3
+
+Routing Group[2]:
+	CoreBlock_4
+
+Routing Group[3]:
+	CoreBlock_5
+
+shared_axons: 0
+cb: CoreBlock_0:
+	InputSlice inp1[0:450]: AxonSegment(n_axon=450, addr_width=450, addr_offset=0)
+
+shared_axons: 1
+cb: CoreBlock_1:
+	n0_copied_1[0:450]: AxonSegment(n_axon=450, addr_width=450, addr_offset=0)
+	n1[0:150]: AxonSegment(n_axon=150, addr_width=150, addr_offset=450)
+
+cb: CoreBlock_2:
+	n0_copied_1[0:450]: AxonSegment(n_axon=450, addr_width=450, addr_offset=0)
+	n1[150:300]: AxonSegment(n_axon=150, addr_width=150, addr_offset=450)
+
+cb: CoreBlock_3:
+	n0_copied_1[0:450]: AxonSegment(n_axon=450, addr_width=450, addr_offset=0)
+	n1[300:450]: AxonSegment(n_axon=150, addr_width=150, addr_offset=450)
+
+shared_axons: 0
+cb: CoreBlock_4:
+	n0[0:450]: AxonSegment(n_axon=450, addr_width=450, addr_offset=0)
+
+shared_axons: 0
+cb: CoreBlock_5:
+	n2[0:900]: AxonSegment(n_axon=900, addr_width=900, addr_offset=0)
+
+CoreBlock_0:
+	lcn_ex: 0
+	fan_out: 64
+
+CoreBlock_1:
+	lcn_ex: 0
+	fan_out: 64
+
+CoreBlock_2:
+	lcn_ex: 0
+	fan_out: 64
+
+CoreBlock_3:
+	lcn_ex: 0
+	fan_out: 64
+
+CoreBlock_4:
+	lcn_ex: 0
+	fan_out: 64
+
+CoreBlock_5:
+	lcn_ex: 0
+	fan_out: 64
+
+CoreBlock_0
+Core[0]:
+	n0_copied_1[slice(0, 57, 1)]
+Core[1]:
+	n0_copied_1[slice(57, 114, 1)]
+Core[2]:
+	n0_copied_1[slice(114, 171, 1)]
+Core[3]:
+	n0_copied_1[slice(171, 228, 1)]
+Core[4]:
+	n0_copied_1[slice(228, 285, 1)]
+Core[5]:
+	n0_copied_1[slice(285, 342, 1)]
+Core[6]:
+	n0_copied_1[slice(342, 399, 1)]
+Core[7]:
+	n0_copied_1[slice(399, 450, 1)]
+Core[8]:
+	n0[slice(0, 57, 1)]
+Core[9]:
+	n0[slice(57, 114, 1)]
+Core[10]:
+	n0[slice(114, 171, 1)]
+Core[11]:
+	n0[slice(171, 228, 1)]
+Core[12]:
+	n0[slice(228, 285, 1)]
+Core[13]:
+	n0[slice(285, 342, 1)]
+Core[14]:
+	n0[slice(342, 399, 1)]
+Core[15]:
+	n0[slice(399, 450, 1)]
+************************
+
+CoreBlock_1
+Core[0]:
+	n2[slice(0, 60, 1)]
+Core[1]:
+	n2[slice(60, 120, 1)]
+Core[2]:
+	n2[slice(120, 180, 1)]
+Core[3]:
+	n2[slice(180, 240, 1)]
+Core[4]:
+	n2[slice(240, 300, 1)]
+************************
+
+CoreBlock_2
+Core[0]:
+	n2[slice(300, 360, 1)]
+Core[1]:
+	n2[slice(360, 420, 1)]
+Core[2]:
+	n2[slice(420, 480, 1)]
+Core[3]:
+	n2[slice(480, 540, 1)]
+Core[4]:
+	n2[slice(540, 600, 1)]
+************************
+
+CoreBlock_3
+Core[0]:
+	n2[slice(600, 660, 1)]
+Core[1]:
+	n2[slice(660, 720, 1)]
+Core[2]:
+	n2[slice(720, 780, 1)]
+Core[3]:
+	n2[slice(780, 840, 1)]
+Core[4]:
+	n2[slice(840, 900, 1)]
+************************
+
+CoreBlock_4
+Core[0]:
+	n1[slice(0, 57, 1)]
+Core[1]:
+	n1[slice(57, 114, 1)]
+Core[2]:
+	n1[slice(114, 171, 1)]
+Core[3]:
+	n1[slice(171, 228, 1)]
+Core[4]:
+	n1[slice(228, 285, 1)]
+Core[5]:
+	n1[slice(285, 342, 1)]
+Core[6]:
+	n1[slice(342, 399, 1)]
+Core[7]:
+	n1[slice(399, 450, 1)]
+************************
+
+CoreBlock_5
+Core[0]:
+	n3[slice(0, 60, 1)]
+Core[1]:
+	n3[slice(60, 120, 1)]
+Core[2]:
+	n3[slice(120, 180, 1)]
+Core[3]:
+	n3[slice(180, 240, 1)]
+Core[4]:
+	n3[slice(240, 300, 1)]
+Core[5]:
+	n3[slice(300, 360, 1)]
+Core[6]:
+	n3[slice(360, 420, 1)]
+Core[7]:
+	n3[slice(420, 480, 1)]
+Core[8]:
+	n3[slice(480, 540, 1)]
+Core[9]:
+	n3[slice(540, 600, 1)]
+Core[10]:
+	n3[slice(600, 660, 1)]
+Core[11]:
+	n3[slice(660, 720, 1)]
+Core[12]:
+	n3[slice(720, 780, 1)]
+Core[13]:
+	n3[slice(780, 840, 1)]
+Core[14]:
+	n3[slice(840, 900, 1)]
+************************
+
+Routing Group:
+	CoreBlock_0
+	cost: 16, wasted: 0
+route_group: SubRoutingGroup[0] assigned from (L4: X0Y0, L3: X0Y0, L2: X0Y0, L1: X0Y0, L0: X0Y0)
+element: CoreBlock_0, 16 cores, start at (L4: X0Y0, L3: X0Y0, L2: X0Y0, L1: X0Y0, L0: X0Y0)
+
+Routing Group:
+	CoreBlock_4
+	cost: 8, wasted: 0
+route_group: SubRoutingGroup[1] assigned from (L4: X0Y0, L3: X0Y0, L2: X0Y1, L1: X0Y0, L0: X0Y0)
+element: CoreBlock_4, 8 cores, start at (L4: X0Y0, L3: X0Y0, L2: X0Y1, L1: X0Y0, L0: X0Y0)
+
+Routing Group:
+	CoreBlock_1
+	CoreBlock_2
+	CoreBlock_3
+	cost: 32, wasted: 11
+route_group: SubRoutingGroup[5] assigned from (L4: X0Y0, L3: X0Y0, L2: X1Y0, L1: X0Y0, L0: X0Y0)
+element: SubRoutingGroup[2], 8 cores, start at (L4: X0Y0, L3: X0Y0, L2: X1Y0, L1: X0Y0, L0: X0Y0)
+element: CoreBlock_1, 5 cores, start at (L4: X0Y0, L3: X0Y0, L2: X1Y0, L1: X0Y0, L0: X0Y0)
+element: SubRoutingGroup[3], 8 cores, start at (L4: X0Y0, L3: X0Y0, L2: X1Y0, L1: X1Y0, L0: X0Y0)
+element: CoreBlock_2, 5 cores, start at (L4: X0Y0, L3: X0Y0, L2: X1Y0, L1: X1Y0, L0: X0Y0)
+element: SubRoutingGroup[4], 8 cores, start at (L4: X0Y0, L3: X0Y0, L2: X1Y1, L1: X0Y0, L0: X0Y0)
+element: CoreBlock_3, 5 cores, start at (L4: X0Y0, L3: X0Y0, L2: X1Y1, L1: X0Y0, L0: X0Y0)
+
+Routing Group:
+	CoreBlock_5
+	cost: 16, wasted: 1
+route_group: SubRoutingGroup[6] assigned from (L4: X0Y0, L3: X0Y1, L2: X0Y0, L1: X0Y0, L0: X0Y0)
+element: CoreBlock_5, 15 cores, start at (L4: X0Y0, L3: X0Y1, L2: X0Y0, L1: X0Y0, L0: X0Y0)
+

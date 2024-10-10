@@ -18,7 +18,7 @@ from .placement import CoreBlock
 from .routing import RoutingGroup
 from .segment_utils import get_neu_segments
 from .types import *
-
+from .slice import node_overlap
 
 @dataclass
 class PAIGraph:
@@ -554,6 +554,7 @@ def convert2routing_groups(
                 routing_groups.append(RoutingGroup(*input_cbs))
 
     for cb in ordered_core_blocks:
+        print("checking cb:", cb.name)
         # Check whether the core block has been traversed. This judgment condition is for
         # core blocks with out-degree = 1 & output core blocks (out-degree = 0).
         if cb not in seen_cb:
@@ -846,7 +847,7 @@ def get_shortest_path(
 def get_succ_cb_by_node(
     node: NodeType, core_blocks: Sequence[CoreBlock]
 ) -> list[CoreBlock]:
-    return [cb for cb in core_blocks if node in cb.source]
+    return [cb for cb in core_blocks if node_overlap(node, cb.source)]
 
 
 def get_pred_cb_by_succ_cb(

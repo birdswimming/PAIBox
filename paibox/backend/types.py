@@ -15,7 +15,7 @@ else:
 from paicorelib import Coord, CoreMode
 from paicorelib import ReplicationId as RId
 from paibox.base import PAIBoxObject
-from paibox.components import FullConnectedSyn, InputProj, Neuron
+from paibox.components import FullConnectedSyn, InputProj, Neuron, EdgeSlice, InputSlice, NeuronSlice
 
 __all__ = [
     "NodeName",
@@ -24,6 +24,10 @@ __all__ = [
     "EdgeType",
     "SourceNodeType",
     "DestNodeType",
+    "NodeSliceType",
+    "EdgeSliceType",
+    "SourceSliceType",
+    "DestSliceType",
     "NodePosition",
     "NodeDegree",
     "NodeAttr",
@@ -43,9 +47,13 @@ __all__ = [
 NodeName: TypeAlias = str
 EdgeName: TypeAlias = str
 NodeType: TypeAlias = Union[InputProj, Neuron]
+NodeSliceType: TypeAlias = Union[InputSlice, NeuronSlice]
 EdgeType: TypeAlias = FullConnectedSyn
+EdgeSliceType: TypeAlias = EdgeSlice
 SourceNodeType: TypeAlias = NodeType
+SourceSliceType: TypeAlias = NodeSliceType
 DestNodeType: TypeAlias = Neuron
+DestSliceType: TypeAlias = NeuronSlice
 
 WRAM_UNPACKED_DTYPE = np.uint8
 WRAM_PACKED_DTYPE = np.uint64
@@ -228,6 +236,8 @@ class AxonSegment(NamedTuple):
     """The range of axon address is [addr_offset, addr_offset + addr_width)."""
     addr_offset: int
     """The offset of the assigned address."""
+    start_offset: int
+    """"The start of the source slice."""
 
 
 class CoreAbstract(PAIBoxObject, ABC):
