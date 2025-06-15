@@ -108,7 +108,7 @@ class SuccGroup:
     """A node and all its successor nodes & edges are grouped into a `SuccGroup`."""
 
     input: NodeType
-    nodes: list[NodeType]
+    nodes: list[DestNodeType]
     edges: list[EdgeType]  # len(edges) == len(nodes)
 
     def __eq__(self, other: "SuccGroup") -> bool:
@@ -122,7 +122,7 @@ class MergedSuccGroup:
     """SuccGroups with intersecting nodes will be merged into a `MergedSuccGroup`."""
 
     def __init__(self, *init_sgrp: SuccGroup) -> None:
-        self.nodes: set[NodeType] = set()
+        self.nodes: set[DestNodeType] = set()
         self.groups: list[SuccGroup] = list()
         self.input_nodes: list[NodeType] = list()
 

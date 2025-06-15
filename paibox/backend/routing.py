@@ -12,7 +12,7 @@ from paicorelib import RoutingLevel as Level
 from paicorelib.routing_defs import MAX_ROUTING_PATH_LENGTH
 
 from paibox.components.neuron.base import NEU_TARGET_CHIP_NOT_SET
-from paibox.exceptions import PAIBoxDeprecationWarning, ResourceError, RoutingError
+from paibox.exceptions import PAIBoxDeprecationWarning, ResourceError, RoutingError, NotSupportedError
 from paibox.utils import check_elem_same
 
 from .conf_types import CorePlmConfInChip
@@ -61,8 +61,6 @@ class RoutingGroup:
         self.offset: list[int] = []  # TODO Change a name
         self.n_core_required: int = 0
         """The actual number of cores required by the routing group."""
-        self.n_tail_waste: int = 0
-        """Waste cores at the tail of the routing group."""
 
         axons: set[SourceNodeType] = set()
         for elem in self.routing_elems:
@@ -168,17 +166,10 @@ class RoutingGroup:
 
         # If there are ordered routing groups, the final amount wasted is the
         # tail waste number of the LAST routing group. Otherwise, waste = 0.
-        n_tail_waste = ordered_rgrp[-1].n_tail_waste if ordered_rgrp else 0
-        # sub_tail_wasted = (
-        #     0
-        #     if isinstance(self.routing_elems[-1], CoreBlock)
-        #     else self.routing_elems[-1].n_tail_waste
-        # )
 
         # This is the amount of cores required actually.
         assert n_core_used > 0
         self.n_core_required = 1 << (n_core_used - 1).bit_length()
-        self.n_tail_waste = self.n_core_required - n_core_used + n_tail_waste
 
     def assign_coord(
         self, chip_coord: Coord, allocated: list[Coord]
@@ -271,37 +262,77 @@ class RoutingGroup:
                 cbs += elem.core_blocks
 
         return cbs
+    
+    @property
+    def online(self) -> bool:
+        """Check if the routing group is online."""
+        if len(self.core_blocks) == 1 and self.core_blocks[0].online:
+            if self.is_root:
+                return True
+            else:
+                raise NotSupportedError(
+                    "online core is not supported yet for multicast"
+                )
+        return False
 
     @classmethod
     def build(
         cls, merged_sgrp: MergedSuccGroup, is_root: bool = False
     ) -> "RoutingGroup":
-        msgrp = MergedSuccGroup()
+        sub_msgrp = MergedSuccGroup()
         remaining = MergedSuccGroup()
         sub_nodes = set()
         remaining_nodes = set()
-        for group in merged_sgrp.groups:
-            if group.input in merged_sgrp.nodes:
-                sub_nodes.update(group.nodes)
-        remaining_nodes = merged_sgrp.nodes - sub_nodes
+        def is_online(node: DestNodeType) -> bool:
+            # not implemented yet
+            return True
 
-        for group in merged_sgrp.groups:
-            if not sub_nodes.isdisjoint(group.nodes):
-                msgrp.add_group(group)
-            if not remaining_nodes.isdisjoint(group.nodes):
-                remaining.add_group(group)
+        online = False
+        #make sure the online property is same for all nodes in the merged_sgrp
+        for i, node in enumerate(merged_sgrp.nodes):
+            if i == 0:
+                online = is_online(node)
+            elif online != is_online(node):
+                raise NotSupportedError(
+                    "online core and offline core are not supported to be multicasted together"
+                )
 
-        remaining.nodes &= remaining_nodes
-        msgrp.nodes &= sub_nodes
-        unordered_cb = CoreBlock.build_core_blocks(remaining)
+        if online:
+            # If the merged_sgrp is online, it should only have one node.
+            if len(merged_sgrp.nodes) > 1:
+                raise NotSupportedError(
+                    "online core is not supported yet for multicast with multiple nodes"
+                )
+            if not is_root:
+                raise NotSupportedError(
+                    "online core is not supported yet for multicast with non-root routing group"
+                )
+            unordered_cb = CoreBlock.build_core_blocks(merged_sgrp, True)
 
-        if len(msgrp.nodes) > 0:
-            sub_rgrp = RoutingGroup.build(msgrp)
+        else:
+            for group in merged_sgrp.groups:
+                if group.input in merged_sgrp.nodes:
+                    sub_nodes.update(group.nodes)
+            remaining_nodes = merged_sgrp.nodes - sub_nodes
+
+            for group in merged_sgrp.groups:
+                if not sub_nodes.isdisjoint(group.nodes):
+                    sub_msgrp.add_group(group)
+                if not remaining_nodes.isdisjoint(group.nodes):
+                    remaining.add_group(group)
+
+            remaining.nodes &= remaining_nodes
+            sub_msgrp.nodes &= sub_nodes
+            unordered_cb = CoreBlock.build_core_blocks(remaining)
+
+        if len(sub_msgrp.nodes) > 0:
+            sub_rgrp = RoutingGroup.build(sub_msgrp)
             ordered_rgrp = [sub_rgrp]
         else:
             ordered_rgrp = []
-
-        return cls(unordered_cb, ordered_rgrp, is_root)
+        
+        unordered_elems: list[Union[CoreBlock, "RoutingGroup"]] = list(unordered_cb)
+        return cls(unordered_elems, ordered_rgrp, is_root)
 
     def core_block_alloc(self) -> None:
         assert self.is_assigned, "coordinates are not assigned."

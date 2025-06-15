@@ -4,7 +4,7 @@ from copy import copy
 from pathlib import Path
 from typing import Literal, Optional, Union
 
-from paicorelib import ChipCoord, Coord, CoordOffset, HwConfig, get_replication_id
+from paicorelib import ChipCoord, Coord, CoordOffset, HwConfig, get_replication_id, LCN_EX
 
 from paibox.base import SynSys
 from paibox.components import Neuron
@@ -56,6 +56,7 @@ class Mapper:
         self.core_blocks: list[CoreBlock] = []
         """List for core blocks in the network."""
         self.succ_core_blocks: dict[CoreBlock, list[CoreBlock]] = defaultdict(list)
+        self.prev_core_blocks: dict[CoreBlock, list[CoreBlock]] = defaultdict(list)
         self.input_core_blocks: dict[SourceNodeType, list[CoreBlock]] = defaultdict(
             list
         )
@@ -82,6 +83,7 @@ class Mapper:
 
         self.core_blocks.clear()
         self.succ_core_blocks.clear()
+        self.prev_core_blocks.clear()
         self.input_core_blocks.clear()
 
         self.degrees_of_cb.clear()
@@ -257,6 +259,10 @@ class Mapper:
                 if any(d for d in cur_cb.dest if d in cb.ordered_axons):
                     succ_cbs.append(cb)
 
+            for cb in succ_cbs:
+                if cb not in self.prev_core_blocks:
+                    self.prev_core_blocks[cb] = []
+                self.prev_core_blocks[cb].append(cur_cb)
             self.succ_core_blocks[cur_cb] = succ_cbs
 
         for inode in self.graph.inodes.values():
@@ -286,28 +292,60 @@ class Mapper:
 
     def lcn_ex_adjustment(self) -> None:
         """Adjust the LCN of each core block & set target LCN."""
-        # In the absence of the above complex situations, the following judgment is useless.
-        # But it'd be better to add this lcn adjustment.
+        # the core in the same neighbor list should have the same lcn_ex
+        neighbor_lists: list[list[CoreBlock]] = list()
         for input_cbs in self.input_core_blocks.values():
-            if len(input_cbs) > 1:
-                max_lcn_ex = max_lcn_of_cb(input_cbs)
-                # Adjust the `lcn_ex` of the input core blocks for each input node
-                for g in input_cbs:
-                    g.lcn_ex = max_lcn_ex
+            neighbor_lists.append(input_cbs)
+        for cb in self.core_blocks:
+            neighbor_list: list[CoreBlock] = []
+            neighbor_list = self.succ_core_blocks[cb].copy()
+            if cb.online:
+                # the online core's lcn is same with target_lcn
+                # so it should have the same lcn_ex with its succ
+                neighbor_list.append(cb)
+            neighbor_lists.append(neighbor_list)
+        
+        # merge neighbors
+        merged_lists:list[set[CoreBlock]] = []
+        visited = set()
 
+        for i, neighbor_set in enumerate(neighbor_lists):
+            if i in visited:
+                continue
+            # 当前合并集合
+            merged = set(neighbor_set)
+            changed = True
+            visited.add(i)
+
+            while changed:
+                changed = False
+                for j in range(len(neighbor_lists)):
+                    if j in visited:
+                        continue
+                    if not merged.isdisjoint(neighbor_lists[j]):
+                        merged.update(neighbor_lists[j])
+                        visited.add(j)
+                        changed = True  # 有新合并就继续 while
+
+            merged_lists.append(merged)
+        
+
+        # set lcn_ex for merged neighbors
+        for merged_list in merged_lists:
+            max_lcn_ex = max_lcn_of_cb(list(merged_list))
+            for cb in merged_list:
+                # online core's lcn_ex limit check
+                # happends in cb.lcn_ex setter
+                cb.lcn_ex = max_lcn_ex
+        
+        # Set the target LCN of each core block
         for cb in self.core_blocks:
             succ_cbs = self.succ_core_blocks[cb]
-
-            if len(succ_cbs) > 1:
-                max_lcn_ex = max_lcn_of_cb(succ_cbs)
-                # Adjust the `lcn_ex` of the following core blocks
-                for _cb in succ_cbs:
-                    _cb.lcn_ex = max_lcn_ex
-
-                # Adjust `target_lcn` of itself & lock
-                cb.target_lcn = max_lcn_ex
-            elif len(succ_cbs) == 1:
-                # Adjust `target_lcn` of itself & lock
+            if len(succ_cbs) > 0:
+                # the lcn_ex of the successor core blocks have been adjusted to the same
+                # use the first successor core block's lcn_ex as the target_lcn
+                # the online core's lcn_ex is same with target_lcn
+                # this limit also satisfied by the above code
                 cb.target_lcn = succ_cbs[0].lcn_ex
 
             cb._lcn_locked = True
@@ -317,14 +355,14 @@ class Mapper:
         for core_block in self.core_blocks:
             core_block.group_axons()
 
-    def graph_optimization(self) -> None:
-        optimized = self.graph.graph_optimization(self.core_blocks, self.routing_groups)
-        if optimized:
-            self.core_blocks.clear()
-            self.succ_core_blocks.clear()
-            self._build_check()
-            self.build_core_blocks()
-            self.lcn_ex_adjustment()
+    # def graph_optimization(self) -> None:
+    #     optimized = self.graph.graph_optimization(self.core_blocks, self.routing_groups)
+    #     if optimized:
+    #         self.core_blocks.clear()
+    #         self.succ_core_blocks.clear()
+    #         self._build_check()
+    #         self.build_core_blocks()
+    #         self.lcn_ex_adjustment()
 
     def coord_assign(self, core_estimate_only: bool) -> None:
         """Assign the coordinate of each `CorePlacement`.

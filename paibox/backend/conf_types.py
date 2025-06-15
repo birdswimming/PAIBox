@@ -89,23 +89,31 @@ else:
 
 
 class CoreConfig(NamedTuple):
+    pass
+
+class OfflineCoreConfig(CoreConfig):
     """Configurations of core."""
+
+    class _OfflineCoreConfig(NamedTuple):
+        name: str
+        weight_width: WeightWidth
+        lcn_extension: LCN_EX
+        input_width_format: InputWidthFormat
+        spike_width_format: SpikeWidthFormat
+        num_dendrite: int
+        max_pooling_en: MaxPoolingEnable
+        tick_wait_start: int
+        tick_wait_end: int
+        snn_mode_en: SNNModeEnable
+        target_lcn: LCN_EX
+        test_chip_addr: Coord
 
     _extra_params = ("name",)
     """Extra parameters for debugging."""
 
-    name: str
-    weight_width: WeightWidth
-    lcn_extension: LCN_EX
-    input_width_format: InputWidthFormat
-    spike_width_format: SpikeWidthFormat
-    num_dendrite: int
-    max_pooling_en: MaxPoolingEnable
-    tick_wait_start: int
-    tick_wait_end: int
-    snn_mode_en: SNNModeEnable
-    target_lcn: LCN_EX
-    test_chip_addr: Coord
+    def __new__(cls, **kwargs):
+        config = cls._OfflineCoreConfig(**kwargs)  # 先创建 _OfflineCoreConfig 实例
+        return super().__new__(cls, **config._asdict())  # 解析为字典并传递
 
     def export(self) -> ParamsReg:
         return ParamsReg.model_validate(self._asdict(), strict=True)
@@ -118,7 +126,57 @@ class CoreConfig(NamedTuple):
             dict_[var] = getattr(self, var)
 
         return dict_
+    
+    @classmethod
+    def build(cls, *args) -> "OfflineCoreConfig":
+        field_names = cls._OfflineCoreConfig._fields  # 获取字段名顺序
+        if len(args) != len(field_names):
+            raise ValueError(f"Expected {len(field_names)} arguments, but got {len(args)}.")
+        return cls(**dict(zip(field_names, args)))
 
+
+class OnlineCoreConfig(CoreConfig):
+    """Configurations of core."""
+
+    class _OnlineCoreConfig(NamedTuple):
+        name: str
+        bit_select: WeightWidth
+        group_select: LCN_EX
+        lateral_inhi_value: int
+        weight_decay_value: int
+        upper_weight: int
+        lower_weight: int
+        neuron_start: int
+        neuron_end: int
+        inhi_core_x_star: Coord
+        inhi_core_y_star: Coord
+        core_start_time: int
+        core_hold_time: int
+        LUT_random_en: bool
+        decay_random_en: bool
+        leakage_order: bool
+        online_mode_en: bool
+        test_address: Coord
+        random_seed: int
+
+    _extra_params = ("name",)
+    """Extra parameters for debugging."""
+
+    def __new__(cls, **kwargs):
+        config = cls._OnlineCoreConfig(**kwargs)  # 先创建 _OfflineCoreConfig 实例
+        return super().__new__(cls, **config._asdict())  # 解析为字典并传递
+
+    def export(self) -> ParamsReg:
+        raise NotImplementedError
+
+    def to_json(self) -> dict[str, Any]:
+        """Dump the configs into json for debugging."""
+        dict_ = self.export().model_dump(by_alias=True)
+
+        for var in self._extra_params:
+            dict_[var] = getattr(self, var)
+
+        return dict_
 
 @dataclass(frozen=True)
 class NeuronDest:

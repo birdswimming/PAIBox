@@ -2,7 +2,7 @@ import sys
 from collections import defaultdict
 from typing import ClassVar
 
-from .types import NodeType
+from .types import NodeType, DestNodeType
 
 if sys.version_info >= (3, 10):
     from typing import TypeAlias
@@ -40,7 +40,7 @@ class GraphNodeConstrs(Constraints):
             )
 
     @staticmethod
-    def apply_constrs(raw_nodes: list[NodeType]) -> list[list[NodeIdx]]:
+    def apply_constrs(raw_nodes: list[DestNodeType]) -> list[list[NodeIdx]]:
         """Group the nodes by the constraints of the nodes.
 
         Args:
