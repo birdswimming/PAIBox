@@ -5,7 +5,7 @@ import paibox as pb
 from paibox.base import DynamicSys
 from paibox.components import NeuModule
 from paibox.components._modules import _SemiFoldedModule
-from paibox.components.synapses.conv_utils import conv2d_faster, _pair, _single
+from paibox.components.synapses.conv_utils import _pair, _single, conv2d_faster
 from paibox.exceptions import ShapeError
 from paibox.network import DynSysGroup
 from paibox.types import NEUOUT_U8_DTYPE, VOLTAGE_DTYPE, WEIGHT_DTYPE

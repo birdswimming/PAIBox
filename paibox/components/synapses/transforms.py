@@ -19,9 +19,7 @@ from paibox.utils import is_shape, shape2num, typical_round
 
 from .conv_types import Size1Type, Size2Type, SizeAnyType, _SizeAnyType
 from .conv_utils import (
-    conv1d_faster,
     _conv1d_unroll,
-    conv2d_faster,
     _conv2d_semifolded_unroll,
     _conv2d_unroll,
     _convtranspose1d_faster,
@@ -32,6 +30,8 @@ from .conv_utils import (
     _func_pool2d,
     _pool1d_kernel_unroll,
     _pool2d_kernel_unroll,
+    conv1d_faster,
+    conv2d_faster,
 )
 
 __all__ = [
@@ -367,7 +367,12 @@ class Conv1dForward(_ConvNdForward):
         _x = x.reshape((cin,) + self.in_shape)
 
         return conv1d_faster(
-            _x, self.out_shape, self.weights, self.stride, self.padding, groups=self.groups
+            _x,
+            self.out_shape,
+            self.weights,
+            self.stride,
+            self.padding,
+            groups=self.groups,
         )
 
     @property
@@ -404,7 +409,12 @@ class Conv2dForward(_ConvNdForward):
         _x = x.reshape((cin,) + self.in_shape)
 
         return conv2d_faster(
-            _x, self.out_shape, self.weights, self.stride, self.padding, groups=self.groups
+            _x,
+            self.out_shape,
+            self.weights,
+            self.stride,
+            self.padding,
+            groups=self.groups,
         )
 
     @property

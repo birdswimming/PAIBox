@@ -1,13 +1,14 @@
-import numpy as np
-import pytest
 import timeit
 
+import numpy as np
+import pytest
+
+from paibox.components.synapses import conv_utils
 from paibox.components.synapses.conv_utils import (
     _conv2d_unroll,
     conv1d_faster,
     conv2d_faster,
 )
-from paibox.components.synapses import conv_utils
 from tests.conftest import ParametrizedTestData
 
 RNG = np.random.default_rng()

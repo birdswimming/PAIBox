@@ -37,7 +37,7 @@ from .neuron.neurons import *
 from .neuron.utils import ThresholdMode, vjt_overflow
 from .projection import InputProj
 from .synapses import ConnType, Conv2dSemiFoldedSyn, FullConnSyn, MaxPoolSyn
-from .synapses.conv_types import _Size1Type, _Size2Type, Size1Type, Size2Type
+from .synapses.conv_types import Size1Type, Size2Type, _Size1Type, _Size2Type
 from .synapses.conv_utils import _pair
 
 if sys.version_info >= (3, 13):

@@ -6,7 +6,6 @@ from paibox.components.synapses import transforms as tfm
 from paibox.exceptions import AutoOptimizationWarning
 from paibox.types import VOLTAGE_DTYPE, WEIGHT_DTYPE, Shape
 from paibox.utils import shape2num
-
 from tests.components.utils import *
 
 RNG = np.random.default_rng()
